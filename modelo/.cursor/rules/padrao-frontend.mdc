@@ -1,0 +1,11 @@
+---
+description: Padrão do frontend — estrutura, uso do Flora, receitas e espelhos extraídos do código. Vale para qualquer edição no repositório do frontend.
+globs: frontend/**
+alwaysApply: false
+---
+
+# Padrão do frontend — NÃO MAPEADO
+
+Este arquivo ainda não foi gerado a partir do código.
+
+Não escreva código neste repositório. Peça ao humano para rodar `/mapear frontend`.

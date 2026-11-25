@@ -1,0 +1,75 @@
+{
+  "repos": {
+    "backend": {
+      "dir": "backend",
+      "base": "main",
+      "portoes": [],
+      "subir": { "cmd": "", "url": "" }
+    },
+    "frontend": {
+      "dir": "frontend",
+      "base": "main",
+      "portoes": [],
+      "subir": { "cmd": "", "url": "" }
+    }
+  },
+  "convencoes": {
+    "branch": "",
+    "commit": "",
+    "tituloPr": "",
+    "modeloPr": "",
+    "prRascunho": true
+  },
+  "branchesProtegidas": ["main", "master", "develop", "release/*"],
+  "protegidos": [
+    ".github/**",
+    ".husky/**",
+    "sonar-project.properties",
+    "package.json",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    ".npmrc",
+    ".nvmrc",
+    ".eslintrc*",
+    "eslint.config.*",
+    ".eslintignore",
+    ".prettierrc*",
+    "prettier.config.*",
+    ".prettierignore",
+    ".editorconfig",
+    "tsconfig*.json",
+    "jsconfig.json",
+    "jest.config.*",
+    "babel.config.*",
+    ".babelrc*",
+    "craco.config.*",
+    "config-overrides.js",
+    ".env*",
+    "Dockerfile*",
+    "docker-compose*.y*ml"
+  ],
+  "extensoesDeCodigo": ["ts", "tsx", "js", "jsx", "mjs", "cjs"],
+  "proibido": [
+    { "padrao": "eslint-disable", "motivo": "desliga o lint (eslint-disable)" },
+    { "padrao": "@ts-(ignore|nocheck|expect-error)", "motivo": "desliga o TypeScript (@ts-...)" },
+    { "padrao": "NOSONAR", "motivo": "desliga o Sonar (NOSONAR)" },
+    { "padrao": "(istanbul|c8|v8) ignore", "motivo": "esconde código da cobertura" },
+    { "padrao": "\\b(describe|it|test)\\.(only|skip)\\(|\\b(xit|xdescribe|fit|fdescribe)\\(", "motivo": "teste focado ou pulado" },
+    { "padrao": "\\bdebugger\\b", "motivo": "resto de depuração (debugger)" }
+  ],
+  "camadas": [],
+  "pastasLivres": [],
+  "testes": {
+    "padrao": "(\\.(test|spec)\\.[jt]sx?$)|(^|/)__tests__/",
+    "exigirParaArquivoNovo": true,
+    "dispensados": ["index.*", "*.d.ts", "types.ts", "*.types.ts", "*.styles.*", "*.stories.*", "*.mock.*", "constants.ts"]
+  },
+  "orcamento": {
+    "fatia": { "arquivos": 8, "linhas": 200, "comentarios": 6 },
+    "pr": { "arquivos": 20, "linhas": 400, "comentarios": 15 },
+    "ignorar": ["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "*.snap", "*.svg"]
+  },
+  "saida": { "linhasDeErro": 40, "tempoMaximoPorPortaoMin": 15 },
+  "checks": { "intervaloSeg": 20, "maximoMin": 25, "carenciaSemChecksMin": 2 }
+}

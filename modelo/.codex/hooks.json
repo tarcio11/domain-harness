@@ -1,0 +1,38 @@
+{
+  "description": "Domain harness: guarda de shell, catraca do diff e aviso de compactação.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"{{RAIZ}}/harness/bin/hook.mjs\" shell --formato codex",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"{{RAIZ}}/harness/bin/hook.mjs\" parar --formato codex",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"{{RAIZ}}/harness/bin/hook.mjs\" compactar --formato codex",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
