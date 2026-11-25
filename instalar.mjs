@@ -158,15 +158,47 @@ function restosDaVersaoAnterior(raiz) {
     .filter((pasta) => existsSync(join(raiz, pasta, 'SKILL.md')));
 }
 
+// O relatório fala da raiz como ela ficou, não do que o instalador detectou: numa atualização,
+// os repositórios e o mapeamento já estão nos arquivos do projeto, que o instalador não toca.
+function reposDaRaiz(raiz) {
+  const config = lerJson(join(raiz, 'harness', 'config.json'));
+  return Object.entries(config?.repos ?? {}).map(([nome, repo]) => {
+    const regra = join(raiz, '.cursor', 'rules', `padrao-${nome}.mdc`);
+    return {
+      nome,
+      dir: repo?.dir,
+      noLugar: Boolean(repo?.dir) && existsSync(join(raiz, repo.dir, '.git')),
+      mapeado: existsSync(regra) && !readFileSync(regra, 'utf8').includes('NÃO MAPEADO'),
+    };
+  });
+}
+
+function proximosPassos(daRaiz) {
+  const porMapear = daRaiz.filter((repo) => !repo.mapeado).map((repo) => repo.nome);
+  const passos = [
+    'node harness/bin/doutor.mjs            (na raiz; lista o que falta)',
+    'No Cursor: reabra a pasta como confiável e confira os três hooks em Customize → Hooks',
+  ];
+  if (porMapear.length > 0) {
+    passos.push(porMapear.map((nome, i) => `${i === 0 ? 'Conversa nova' : 'outra conversa nova'}: /mapear ${nome}`).join('   ·   '));
+  }
+  passos.push(
+    `${porMapear.length > 0 ? 'Depois de mapear: ' : ''}/entregar <tarefa> leva do plano à PR com os checks verdes (veja docs/exemplo.md)\n` +
+      '     No Cursor, para ele andar sozinho: "node harness/bin/maestro.mjs" e "node harness/bin/portoes.mjs" na allowlist de comandos',
+  );
+  return passos;
+}
+
 function relatar({ raiz, com }, { repos, porSituacao }) {
   const quantos = (situacao) => porSituacao[situacao].length;
+  const daRaiz = reposDaRaiz(raiz);
   console.log(`HARNESS ${VERSAO} em ${raiz} (ferramentas: ${['cursor', ...com].join(', ')})`);
   console.log(
     `  criados: ${quantos('criado')} · atualizados: ${quantos('atualizado')} · iguais: ${quantos('igual')} · ` +
       `do projeto, mantidos: ${quantos('do projeto')} · conflitos: ${quantos('conflito')}`,
   );
-  if (repos.backend) {
-    console.log(`Repositórios: backend → ${repos.backend} · frontend → ${repos.frontend}`);
+  if (daRaiz.length > 0 && daRaiz.every((repo) => repo.noLugar)) {
+    console.log(`Repositórios: ${daRaiz.map((repo) => `${repo.nome} → ${repo.dir}`).join(' · ')}`);
   } else {
     const achados = repos.candidatos.length > 0 ? repos.candidatos.join(', ') : 'nenhum repositório git com package.json';
     console.log(`Repositórios: não deu para decidir sozinho (achei: ${achados}). O /mapear resolve, ou edite repos.*.dir em harness/config.json.`);
@@ -181,10 +213,7 @@ function relatar({ raiz, com }, { repos, porSituacao }) {
     for (const pasta of restos) console.log(`  ${pasta}`);
   }
   console.log('Próximos passos:');
-  console.log('  1. node harness/bin/doutor.mjs            (na raiz; lista o que falta)');
-  console.log('  2. No Cursor: reabra a pasta como confiável e confira os três hooks em Customize → Hooks');
-  console.log('  3. Conversa nova: /mapear backend   ·   outra conversa nova: /mapear frontend');
-  console.log('  4. Depois de mapear: /entregar <tarefa> leva do plano à PR com os checks verdes (veja docs/exemplo.md)');
+  proximosPassos(daRaiz).forEach((passo, i) => console.log(`  ${i + 1}. ${passo}`));
 }
 
 try {

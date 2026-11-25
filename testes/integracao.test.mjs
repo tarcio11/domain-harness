@@ -205,6 +205,41 @@ test('sem --com, só a base do Cursor é instalada', () => {
   }
 });
 
+test('ao atualizar, o instalador fala da raiz como ela está: repositórios do config e só o que falta mapear', () => {
+  const outraRaiz = mkdtempSync(join(tmpdir(), 'harness-teste-'));
+  const regra = (repo) => join(outraRaiz, '.cursor', 'rules', `padrao-${repo}.mdc`);
+  try {
+    // Dois repositórios que o instalador não sabe distinguir: nenhum depende de biblioteca de interface.
+    for (const pasta of ['api', 'web']) {
+      mkdirSync(join(outraRaiz, pasta));
+      writeFileSync(join(outraRaiz, pasta, 'package.json'), JSON.stringify({ name: pasta }));
+      rodar('git', ['init', '-q', '-b', 'main'], { cwd: join(outraRaiz, pasta) });
+    }
+    const primeira = rodar('node', [INSTALADOR, outraRaiz]);
+    assert.match(primeira.saida, /não deu para decidir sozinho \(achei: api, web\)/);
+    assert.match(primeira.saida, /3\. Conversa nova: \/mapear backend {3}· {3}outra conversa nova: \/mapear frontend\n/);
+    assert.match(primeira.saida, /4\. Depois de mapear: \/entregar <tarefa>/);
+
+    // O que o /mapear deixa: as pastas no config e, por enquanto, só o padrão do backend.
+    const config = join(outraRaiz, 'harness', 'config.json');
+    writeFileSync(config, readFileSync(config, 'utf8').replace('"dir": "backend"', '"dir": "api"').replace('"dir": "frontend"', '"dir": "web"'));
+    writeFileSync(regra('backend'), '---\nglobs: api/**\n---\n# Padrão do backend\n');
+    const segunda = rodar('node', [INSTALADOR, outraRaiz]);
+    assert.match(segunda.saida, /do projeto, mantidos: 2 · conflitos: 0/);
+    assert.match(segunda.saida, /Repositórios: backend → api · frontend → web\n/);
+    assert.match(segunda.saida, /3\. Conversa nova: \/mapear frontend\n/);
+    assert.doesNotMatch(segunda.saida, /\/mapear backend/);
+
+    writeFileSync(regra('frontend'), '---\nglobs: web/**\n---\n# Padrão do frontend\n');
+    const terceira = rodar('node', [INSTALADOR, outraRaiz]);
+    assert.match(terceira.saida, /do projeto, mantidos: 3 · conflitos: 0/);
+    assert.doesNotMatch(terceira.saida, /\/mapear/);
+    assert.match(terceira.saida, /3\. \/entregar <tarefa>[^\n]*\n {5}No Cursor, para ele andar sozinho: [^\n]*allowlist de comandos\n/);
+  } finally {
+    rmSync(outraRaiz, { recursive: true, force: true });
+  }
+});
+
 test('o doutor enxerga repositórios e adaptadores, e os testes da catraca passam dentro da raiz', () => {
   const doutor = rodar('node', [join(raiz, 'harness', 'bin', 'doutor.mjs')], { cwd: raiz });
   assert.match(doutor.saida, /Claude Code: hooks do harness/);
