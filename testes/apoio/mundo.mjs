@@ -48,7 +48,7 @@ export const fatia = (id, repo, nome, escopo, espelhos) =>
 export const F1 = fatia('F1', 'backend', 'parser de vendas', '`src/parsers/`, `src/routes/index.js`', '`src/parsers/estoque.parser.js`, `src/parsers/estoque.parser.test.js`');
 export const F2 = fatia('F2', 'frontend', 'tela de vendas', '`src/telas/`', '`src/telas/Estoque.jsx`, `src/telas/Estoque.test.jsx`');
 
-export function plano({ fatias = [F1, F2], duvidas = '', pendentes = '', aprovados = '', status = 'rascunho' } = {}) {
+export function plano({ fatias = [F1, F2], aprovados = '', status = 'rascunho', secoesAntigas = '' } = {}) {
   return `# PARC-482 — parser de vendas
 
 Status: ${status}
@@ -75,20 +75,14 @@ ${fatias.join('\n')}
 ## Premissas
 
 - O total vem em centavos, como no estoque.
-
-## Dúvidas
-
-${duvidas}
-
-## Desvios pendentes
-
-${pendentes}
-
+${secoesAntigas}
 ## Desvios aprovados
 
 ${aprovados}
 
-## Decisões do humano
+## Decisões no caminho
+
+## Pendências
 
 ## Estado
 
@@ -146,6 +140,8 @@ export function criarMolde() {
   alterarJson(join(raiz, 'harness', 'config.json'), (config) => {
     for (const repo of ['backend', 'frontend']) config.repos[repo].portoes = [{ nome: 'testes', cmd: 'node conferir.js' }];
     config.convencoes.commit = 'tipo: descrição curta';
+    // Os testes leem a PR em português; o padrão (inglês) tem o teste dele.
+    config.convencoes.idiomaDaPr = 'pt';
     config.checks = { intervaloSeg: 0.05, maximoMin: 1, carenciaSemChecksMin: 0.002 };
     Object.assign(config.maestro, { esperaPorChamadaSeg: 8, confirmacaoDeVerdeSeg: 0 });
   });
@@ -167,8 +163,9 @@ export function novoMundo(molde, { maestro: opcoesDoMaestro = {}, config = null 
   }
   const ghEstado = join(pasta, 'gh.json');
   writeFileSync(ghEstado, JSON.stringify({ autenticado: true, prs: {}, checks: {}, cabecas: {}, leituras: {}, chamadas: [], remotos }));
+  // Os testes leem os arquivos de passo depois da corrida: por padrão, o mundo de teste não poda.
   alterarJson(join(raiz, 'harness', 'config.json'), (dados) => {
-    Object.assign(dados.maestro, opcoesDoMaestro);
+    Object.assign(dados.maestro, { guardarPassos: true }, opcoesDoMaestro);
     config?.(dados);
   });
   const env = { ...process.env, ...AUTOR, GH_ESTADO: ghEstado, PATH: `${join(pasta, 'bin')}${delimiter}${process.env.PATH}` };
@@ -187,9 +184,14 @@ export function gravar(mundo, caminho, texto) {
   writeFileSync(join(mundo.raiz, caminho), texto);
 }
 
-export const tarefaAtual = (mundo) => ler(mundo, 'harness/tarefas/ATUAL').trim();
-export const livro = (mundo) => JSON.parse(ler(mundo, `harness/tarefas/${tarefaAtual(mundo)}/maestro.json`));
+export const CAMINHO_DO_LIVRO = 'harness/.maestro/conducao/livro.json';
+export const livro = (mundo) => JSON.parse(ler(mundo, CAMINHO_DO_LIVRO));
+export const mudarLivro = (mundo, mudar) => alterarJson(join(mundo.raiz, CAMINHO_DO_LIVRO), mudar);
+export const tarefaAtual = (mundo) => livro(mundo).tarefa;
 export const planoDaTarefa = (mundo) => ler(mundo, `harness/tarefas/${tarefaAtual(mundo)}/plano.md`);
+export const pastaDaTarefa = (mundo) => readdirSync(join(mundo.raiz, 'harness', 'tarefas', tarefaAtual(mundo)));
+// Os arquivos de passo que estão na pasta de trabalho agora.
+export const trabalho = (mundo) => (existsSync(join(mundo.raiz, 'harness', 'trabalho')) ? readdirSync(join(mundo.raiz, 'harness', 'trabalho')) : []);
 
 export function maestro(mundo, ...args) {
   return rodar(process.execPath, [join(mundo.raiz, 'harness', 'bin', 'maestro.mjs'), ...args], { cwd: mundo.raiz, env: mundo.env });
@@ -205,14 +207,22 @@ export function hook(mundo, evento, formato, entrada) {
   return JSON.parse(r.saida);
 }
 
-export function iniciar(mundo, tarefa = 'PARC-482: expor as vendas por parceiro na API e mostrar na tela de vendas.', ...args) {
-  gravar(mundo, 'harness/tarefas/ENTRADA.md', tarefa);
-  const r = maestro(mundo, 'iniciar', ...args);
+export function iniciar(mundo, tarefa = 'PARC-482: expor as vendas por parceiro na API e mostrar na tela de vendas.') {
+  gravar(mundo, 'harness/trabalho/ENTRADA.md', tarefa);
+  const r = maestro(mundo, 'iniciar');
   if (r.codigo !== 0) throw new Error(`iniciar falhou: ${r.erro}`);
   return r;
 }
 
+export function revisar(mundo, pedido) {
+  gravar(mundo, 'harness/trabalho/ENTRADA.md', pedido);
+  return maestro(mundo, 'revisar');
+}
+
 const PAPEIS = [
+  [/^# Roteiro: mapear o padrão de um repositório/m, 'mapear'],
+  [/^# Roteiro: reconhecer o código/m, 'reconhecer'],
+  [/^# Roteiro: revisar linha por linha/m, 'revisarPr'],
   [/^# Roteiro: escrever o plano/m, 'planejar'],
   [/^# Roteiro: criticar o plano/m, 'criticar'],
   [/^# Roteiro: executar um trabalho/m, 'executar'],
@@ -224,7 +234,7 @@ const entreCrases = (texto) => Array.from(String(texto ?? '').matchAll(/`([^`]+)
 
 // Lê o pedido que a saída do maestro manda repassar, como um subagente leria.
 export function lerPedido(mundo, saida) {
-  const caminho = /`(harness\/tarefas\/[^`]+\.pedido\.md)`/.exec(saida)?.[1];
+  const caminho = /`(harness\/trabalho\/[^`]+\.pedido\.md)`/.exec(saida)?.[1];
   if (!caminho) throw new Error(`a saída não aponta um pedido:\n${saida}`);
   const texto = ler(mundo, caminho);
   const [cabecalho, roteiro] = texto.split('\n---\n');
@@ -248,7 +258,7 @@ export function lerPedido(mundo, saida) {
 const textoDaAcao = (saida) => saida.split('\n===\n')[1] ?? '';
 
 // O operador de mentira: roda o maestro e obedece à AÇÃO, sem pensar. É o que a skill /entregar manda.
-// "humano" responde a um PARE (ou devolve null para a condução ficar parada).
+// "humano" resolve um bloqueio (devolve true) ou deixa a condução parada (devolve null).
 export function operar(mundo, subagentes, { humano = () => null, limite = 150 } = {}) {
   const acoes = [];
   const pedidos = [];
@@ -261,15 +271,15 @@ export function operar(mundo, subagentes, { humano = () => null, limite = 150 } 
     if (acao === 'SUBAGENTE') {
       const pedido = lerPedido(mundo, r.saida);
       pedidos.push(pedido);
+      if (!subagentes[pedido.papel]) throw new Error(`não há subagente de mentira para o pedido:\n${pedido.texto.slice(0, 400)}`);
       subagentes[pedido.papel](pedido);
     } else if (acao === 'ESPERAR') {
       // O subagente de mentira já voltou: o operador declara que não houve resultado.
       semResultado = true;
     } else if (acao === 'PARE') {
       const pare = textoDaAcao(r.saida);
-      const resposta = humano(pare, acoes.filter((item) => item === 'PARE').length);
-      if (resposta === null || resposta === undefined) return { fim: 'PARE', texto: pare, acoes, pedidos };
-      gravar(mundo, 'harness/tarefas/RESPOSTA.md', resposta);
+      const resolveu = humano(pare, acoes.filter((item) => item === 'PARE').length);
+      if (resolveu === null || resolveu === undefined) return { fim: 'PARE', texto: pare, acoes, pedidos };
       const retomada = maestro(mundo, 'retomar');
       if (retomada.codigo !== 0) throw new Error(`retomar falhou: ${retomada.erro}`);
     } else if (acao === 'FIM') {
@@ -329,16 +339,54 @@ export function aprovacao(pedido) {
 // (pedido, vez, padrao) => void, em que "vez" conta as chamadas daquele papel.
 export const responder = (mundo, pedido, texto) => gravar(mundo, pedido.resultado, `${texto}\n`);
 
+export const MAPA = `# Mapa do código
+
+## Pedido
+Expor as vendas por parceiro na API e mostrar na tela de vendas.
+
+## Entrega mais parecida
+Estoque por parceiro — mesma forma: um parser, uma rota e uma tela de listagem.
+
+## Fio da entrada ao dado
+1. Entrada: \`api/src/routes/index.js\` — a lista de rotas
+2. \`api/src/parsers/estoque.parser.js\` — o parser da linha
+3. \`web/src/telas/Estoque.jsx\` — a tela
+
+Testes: \`api/src/parsers/estoque.parser.test.js\`, \`web/src/telas/Estoque.test.jsx\`
+
+## Peças e espelhos
+| Peça que o pedido cria ou altera | Espelho | Observação |
+|---|---|---|
+| parser de vendas (novo) | \`api/src/parsers/estoque.parser.js\` | mesmo esqueleto |
+| tela de vendas (nova) | \`web/src/telas/Estoque.jsx\` | mesma estrutura |
+
+## Sem parecido
+- nada
+`;
+
 export function agentes(mundo, trocas = {}, { planoDoCenario = plano() } = {}) {
   const padrao = {
+    mapear: (pedido) => {
+      const regra = pedido.caminhos('Regra de padrão')[0];
+      gravar(mundo, regra, ler(mundo, regra).replace('NÃO MAPEADO', 'mapeado pelo maestro'));
+      alterarJson(join(mundo.raiz, 'harness', 'config.json'), (config) => {
+        config.repos[pedido.repo].portoes = [{ nome: 'testes', cmd: 'node conferir.js' }];
+      });
+      responder(mundo, pedido, 'RESULTADO: ok\nEntrega de referência: estoque\nPortões: testes');
+    },
+    reconhecer: (pedido) => {
+      gravar(mundo, pedido.caminhos('Arquivo do mapa')[0], MAPA);
+      responder(mundo, pedido, 'RESULTADO: ok\nA entrega mais parecida é o estoque; o fio passa por 3 arquivos.');
+    },
     planejar: (pedido) => {
       gravar(mundo, pedido.caminhos('Plano')[0], planoDoCenario);
-      responder(mundo, pedido, 'RESULTADO: ok\n2 fatias, 0 dúvidas, 0 desvios pendentes');
+      responder(mundo, pedido, 'RESULTADO: ok\n2 fatias\n1 premissa');
     },
+    revisarPr: (pedido) => responder(mundo, pedido, 'VEREDITO: APROVADO\nACHADOS: 0'),
     criticar: (pedido) => responder(mundo, pedido, 'VEREDITO: APROVADO\nACHADOS: 0'),
     executar: (pedido, vez) => {
       implementar(mundo, pedido, vez);
-      responder(mundo, pedido, `RESULTADO: ok\nCOMMIT: feat: trabalho ${vez} do ${pedido.repo}\n\nFeito: o que o trabalho pedia.`);
+      responder(mundo, pedido, `RESULTADO: ok\nCOMMIT: feat: work ${vez} on ${pedido.repo}\n\nFeito: o que o trabalho pedia.`);
     },
     revisar: (pedido) => responder(mundo, pedido, aprovacao(pedido)),
     qa: (pedido) => {
@@ -364,3 +412,12 @@ export function agentes(mundo, trocas = {}, { planoDoCenario = plano() } = {}) {
 }
 
 export const tamanho = (caminho) => statSync(caminho).size;
+
+// ------------------------------------------------------------------- apoio dos arquivos de teste
+
+export const papeis = (corrida) => corrida.pedidos.map((pedido) => pedido.papel);
+export const dos = (corrida, papel, repo = null) => corrida.pedidos.filter((pedido) => pedido.papel === papel && (!repo || pedido.repo === repo));
+export const commitsDaBranch = (pasta, branch = BRANCH) => git(pasta, 'log', '--format=%s', `origin/main..${branch}`).split('\n').filter(Boolean);
+// O problema (ou o achado) que um pedido recebeu da tentativa anterior.
+export const problemaDe = (mundo, pedido) => ler(mundo, pedido.caminhos('Problema da tentativa anterior')[0] ?? pedido.caminhos('Achados a corrigir').pop());
+export const REPROVADO = (achado) => `VEREDITO: REPROVADO\nACHADOS: 1\n1. ${achado}`;

@@ -15,10 +15,10 @@ const MENSAGENS = {
   'apagar-remoto': 'Apagar branch remota é decisão do humano.',
   'decisao-do-revisor': 'Aprovar ou fazer merge de PR é do revisor humano.',
   dependencia:
-    'Mudar dependência é desvio de padrão (lei, item 2). Pare, apresente o bloco DESVIO DE PADRÃO e, se aprovado, o humano instala.',
+    'Mudar dependência é limite da lei (seção 2): só o humano instala. Resolva sem a dependência; se o trabalho não fecha sem ela, entregue o resto e registre a pendência.',
   'descarta-trabalho': 'Este comando descarta trabalho que ainda não foi commitado.',
   'so-o-maestro':
-    'Durante o /entregar, branch, commit, push e PR são feitos pelo maestro, não por você. Grave o seu arquivo de resultado e pare. Para desfazer um arquivo seu, use `git checkout -- <arquivo>`.',
+    'Com o maestro conduzindo (/entregar ou /revisar), branch, commit, push e PR são feitos por ele, não por você. Grave o seu arquivo de resultado e termine. Para desfazer um arquivo seu, use `git checkout -- <arquivo>`.',
 };
 // Durante a condução não há humano para confirmar: o que pediria confirmação é negado, com a saída.
 const SEM_HUMANO_POR_PERTO =

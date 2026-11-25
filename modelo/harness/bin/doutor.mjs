@@ -56,11 +56,12 @@ function conferirRepo(config, nome) {
   const portoes = repo.portoes ?? [];
   const rotuloDosPortoes =
     portoes.length > 0 ? `${nome}: ${portoes.length} portões (${portoes.map((p) => p.nome).join(', ')})` : `${nome}: portões configurados`;
-  conferir(portoes.length > 0, rotuloDosPortoes, `rode /mapear ${nome}`);
+  const comoMapear = `rode /mapear ${nome} (ou deixe: o /entregar e o /revisar mapeiam sozinhos na primeira vez)`;
+  conferir(portoes.length > 0, rotuloDosPortoes, comoMapear);
 
   const regra = join(RAIZ, '.cursor', 'rules', `padrao-${nome}.mdc`);
   const texto = existsSync(regra) ? readFileSync(regra, 'utf8') : '';
-  conferir(texto !== '' && !texto.includes('NÃO MAPEADO'), `${nome}: padrão mapeado`, `rode /mapear ${nome}`);
+  conferir(texto !== '' && !texto.includes('NÃO MAPEADO'), `${nome}: padrão mapeado`, comoMapear);
   conferir(texto.includes(`${repo.dir}/**`), `${nome}: a regra de padrão aponta para "${repo.dir}/**"`, `ajuste "globs" em .cursor/rules/padrao-${nome}.mdc`);
 }
 
@@ -80,15 +81,15 @@ function conferirCatraca() {
   conferir(veredito.permissao === 'deny', 'guarda de shell barra --no-verify', 'harness/bin/guarda.mjs foi alterado?');
 }
 
-// O /entregar depende dos roteiros que o maestro põe dentro de cada pedido e do subagente que os executa.
+// O /entregar e o /revisar dependem dos roteiros que o maestro põe dentro de cada pedido e do subagente que os executa.
 function conferirMaestro() {
-  const roteiros = ['maestro/planejar.md', 'maestro/criticar-plano.md', 'maestro/executar.md', 'maestro/qa.md', 'maestro/descrever-pr.md', 'revisor.md'];
-  const faltando = roteiros.filter((roteiro) => !existsSync(join(RAIZ, 'harness', 'roteiros', roteiro)));
-  conferir(faltando.length === 0, '/entregar: roteiros do maestro presentes', `rode o instalador de novo (faltam: ${faltando.join(', ')})`);
-  conferir(existsSync(join(RAIZ, '.cursor', 'agents', 'maestro-passo.md')), '/entregar: subagente maestro-passo (Cursor)', 'rode o instalador de novo');
+  const roteiros = ['mapear', 'reconhecer', 'planejar', 'criticar-plano', 'executar', 'revisar-pr', 'qa', 'descrever-pr'].map((nome) => `maestro/${nome}.md`);
+  const faltando = [...roteiros, 'revisor.md'].filter((roteiro) => !existsSync(join(RAIZ, 'harness', 'roteiros', roteiro)));
+  conferir(faltando.length === 0, 'maestro: roteiros presentes', `rode o instalador de novo (faltam: ${faltando.join(', ')})`);
+  conferir(existsSync(join(RAIZ, '.cursor', 'agents', 'maestro-passo.md')), 'maestro: subagente maestro-passo (Cursor)', 'rode o instalador de novo');
   const conducao = conducaoAberta();
   if (conducao) {
-    const situacao = conducao.parado ? `parada, esperando você (${conducao.parado.tipo})` : 'em andamento';
+    const situacao = conducao.parado ? 'bloqueada, esperando você' : 'em andamento';
     console.log(`• condução aberta: ${conducao.tarefa}, ${situacao} — node harness/bin/maestro.mjs estado`);
   }
 }
@@ -119,7 +120,7 @@ conferirAdaptadores();
 
 console.log(
   pendencias === 0
-    ? 'RESULTADO: tudo certo. Falta só o que o doutor não enxerga: em cada ferramenta, confira se os hooks aparecem e estão confiáveis (Cursor: Customize → Hooks; Claude Code e Codex: /hooks). Para o /entregar andar sozinho, o comando "node harness/bin/maestro.mjs" precisa rodar sem pedir aprovação e com acesso à rede (no Cursor: allowlist de comandos).'
+    ? 'RESULTADO: tudo certo. Falta só o que o doutor não enxerga: em cada ferramenta, confira se os hooks aparecem e estão confiáveis (Cursor: Customize → Hooks; Claude Code e Codex: /hooks). Para o /entregar e o /revisar andarem sozinhos, o comando "node harness/bin/maestro.mjs" precisa rodar sem pedir aprovação e com acesso à rede (no Cursor: allowlist de comandos).'
     : `RESULTADO: ${pendencias} pendência(s) acima.`,
 );
 process.exitCode = pendencias === 0 ? 0 : 1;

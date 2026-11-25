@@ -88,12 +88,12 @@ test('verificação desligada bloqueia só em linha adicionada de código', () =
 test('arquivo protegido bloqueia, e o plano libera o que o humano aprovou', () => {
   const arquivos = [arquivo('package.json', ['    "date-fns": "^3.0.0",']), arquivo('.github/workflows/ci.yml', ['x'])];
   assert.deepEqual(conferir(arquivos), [
-    '[BLOQUEIO] backend/package.json — arquivo protegido: só o humano altera (lei, item 7)',
-    '[BLOQUEIO] backend/.github/workflows/ci.yml — arquivo protegido: só o humano altera (lei, item 7)',
+    '[BLOQUEIO] backend/package.json — arquivo protegido: só o humano altera (lei, seção 2)',
+    '[BLOQUEIO] backend/.github/workflows/ci.yml — arquivo protegido: só o humano altera (lei, seção 2)',
   ]);
   assert.deepEqual(conferir(arquivos, { liberados: ['backend/package.json'] }), [
-    '[liberado] backend/package.json — arquivo protegido: só o humano altera (lei, item 7)',
-    '[BLOQUEIO] backend/.github/workflows/ci.yml — arquivo protegido: só o humano altera (lei, item 7)',
+    '[liberado] backend/package.json — arquivo protegido: só o humano altera (lei, seção 2)',
+    '[BLOQUEIO] backend/.github/workflows/ci.yml — arquivo protegido: só o humano altera (lei, seção 2)',
   ]);
 });
 
@@ -117,12 +117,12 @@ test('camada que importa o que não pode é bloqueio', () => {
 test('escopo da fatia: o que está fora é bloqueio', () => {
   const arquivos = [arquivo('src/parsers/vendas.ts', ['x']), arquivo('src/utils/data.ts', ['x'])];
   assert.deepEqual(conferir(arquivos, { escopo: ['backend/src/parsers/'] }), [
-    '[BLOQUEIO] backend/src/utils/data.ts — fora do escopo da fatia: desfaça ou declare o desvio',
+    '[BLOQUEIO] backend/src/utils/data.ts — fora do escopo deste trabalho: desfaça ou, se o trabalho precisa mesmo dele, declare com "ESCOPO EXTRA" no resultado',
   ]);
   assert.deepEqual(conferir(arquivos, { escopo: ['src/parsers', 'src/utils/data.ts'] }), []);
 });
 
-test('avisos: orçamento, comentários, reformatação, pasta nova e arquivo novo sem teste', () => {
+test('avisos: tamanho da fatia, comentários, reformatação, pasta nova e arquivo novo sem teste', () => {
   const muitasLinhas = Array.from({ length: 201 }, (_, i) => `const v${i} = ${i};`);
   const comentarios = Array.from({ length: 7 }, (_, i) => `// passo ${i}`);
   const achados = conferir(
@@ -137,12 +137,19 @@ test('avisos: orçamento, comentários, reformatação, pasta nova e arquivo nov
     { somenteEspaco: 30 },
   );
   assert.deepEqual(achados, [
-    '[aviso] diff grande para revisar: 211 linhas (máximo 200), sem contar testes. Divida.',
+    '[aviso] fatia maior que o alvo: 211 linhas (alvo: 150), sem contar testes. Não bloqueia.',
     '[aviso] 7 linhas de comentário novas (máximo 6): deixe só o porquê que o código não diz.',
     '[aviso] 30 linhas mudaram só em espaço/formatação: desfaça o que não é da tarefa.',
-    '[aviso] backend/src/helpers — pasta nova: confirme que a receita do padrão prevê (lei, item 3)',
+    '[aviso] backend/src/helpers — pasta nova: confirme que a receita do padrão prevê',
     '[aviso] backend/src/helpers/novo.ts — arquivo novo sem teste novo: o Sonar cobra cobertura em código novo',
   ]);
+});
+
+test('PR não tem orçamento: o tamanho do diff inteiro nunca vira aviso nem bloqueio', () => {
+  const enorme = Array.from({ length: 30 }, (_, i) => arquivo(`src/modulo${i}/arquivo.ts`, Array.from({ length: 200 }, (__, j) => `const v${j} = ${j};`)));
+  const achados = avaliar({ arquivos: enorme, somenteEspaco: 0 }, { config: configPadrao, modo: 'pr', prefixo: 'backend/' }).map(formatarAchado);
+  assert.deepEqual(achados, [], '6000 linhas em 30 arquivos: nada a dizer sobre tamanho');
+  assert.equal(configPadrao.orcamento.pr, undefined);
 });
 
 test('pastasLivres dispensa o aviso de pasta nova', () => {

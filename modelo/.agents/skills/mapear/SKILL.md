@@ -31,7 +31,7 @@ Nos passos abaixo, `<repo>` é `backend` ou `frontend`, e `<dir>` é a pasta rea
    - `repos.<repo>.base`;
    - `repos.<repo>.portoes`: os mesmos comandos que o CI roda na PR, na mesma ordem (lint, tipos, testes com cobertura, build), cada um como `{ "nome": "...", "cmd": "..." }`. Nunca em modo watch;
    - `repos.<repo>.subir`: comando e URL para rodar local;
-   - `convencoes`: formato de branch, de commit e de título de PR, e o caminho do modelo de PR; `prRascunho: false` se os workflows ignoram PR em rascunho;
+   - `convencoes`: formato de branch, de commit e de título de PR, o caminho do modelo de PR e `idioma` (`"en"` ou `"pt"`: o idioma das mensagens de commit do `git log`; se as descrições de PR do time são em outro idioma, `idiomaDaPr`); `prRascunho: false` se os workflows ignoram PR em rascunho;
    - `branchesProtegidas`: acrescente as do repositório.
 
 3. **Prova dos portões.** Com a árvore limpa, rode `node harness/bin/portoes.mjs <repo>`. Tem que dar verde na base. Portão que já falha na base vai para "Dúvidas para o humano".

@@ -16,9 +16,9 @@ const FORMATO_DE_CRITERIO = '- [ ] CA1 — dado …, quando …, então …';
 const ITEM_DE_LISTA = /^[-*] /;
 const SEM_CONTEUDO = /^(—|-|nenhum|nenhuma|n\/a)?\.?$/i;
 const SO_MARCADOR = /^<[^>]*>$/s;
-const NOME_DE_BRANCH = /^[\w.\/-]+$/;
-// O maestro reescreve estas partes; o resto do plano só muda com o humano por perto.
-const SECOES_DO_MAESTRO = ['Estado', 'Decisões do humano'];
+const NOME_DE_BRANCH = /^[\w./-]+$/;
+// O maestro reescreve estas partes a partir do livro; o resto do plano não muda depois de aprovado.
+const SECOES_DO_MAESTRO = ['Estado', 'Decisões no caminho', 'Pendências', 'Decisões do humano'];
 
 export function lerPlano(texto) {
   const secoes = separarSecoes(texto);
@@ -139,7 +139,7 @@ function errosDaFatia(fatia, indice, config) {
   for (const caminho of fatia.escopo) {
     if (caminhoForaDoRepo(caminho)) erros.push(`${fatia.id}: Escopo "${caminho}" tem que ser relativo à pasta do repositório.`);
     else if (protegidos.some((regex) => regex.test(caminho.replace(/\/+$/, '')))) {
-      erros.push(`${fatia.id}: Escopo "${caminho}" é arquivo protegido. Isso é desvio: descreva em "Desvios pendentes" e tire do Escopo.`);
+      erros.push(`${fatia.id}: Escopo "${caminho}" é arquivo protegido: só o humano altera. Tire do Escopo e planeje sem mexer nele; o que a tarefa perde com isso vai em "Premissas".`);
     }
   }
   for (const caminho of fatia.espelho) {
@@ -169,26 +169,6 @@ function errosDeOrdem(fatias, config) {
   return fora ? [`Ordem dos repositórios: ${ordem.join(' antes de ')}.`] : [];
 }
 
-// Num plano em execução, o que já foi feito (ou está em curso) não some nem muda de número,
-// de repositório ou de nome, e ninguém ganha [x] no papel.
-export function errosDeAjuste(antes, depois, idEmCurso) {
-  const erros = [];
-  if (antes.branch !== depois.branch) erros.push(`A linha Branch não pode mudar durante a execução (era "${antes.branch}").`);
-  for (const antiga of antes.fatias.filter((fatia) => fatia.feita || fatia.id === idEmCurso)) {
-    const nova = depois.fatias.find((fatia) => fatia.id === antiga.id);
-    if (!nova || nova.repo !== antiga.repo || nova.nome !== antiga.nome) {
-      erros.push(`A fatia ${antiga.id} (${antiga.nome}) já foi feita ou está em curso: não pode sumir nem mudar de número, de repositório ou de nome.`);
-    } else if (antiga.feita && !nova.feita) {
-      erros.push(`A fatia ${antiga.id} já foi feita: devolva a marca [x].`);
-    }
-  }
-  for (const nova of depois.fatias.filter((fatia) => fatia.feita)) {
-    const jaEstavaFeita = antes.fatias.some((fatia) => fatia.id === nova.id && fatia.feita);
-    if (!jaEstavaFeita) erros.push(`A fatia ${nova.id} está marcada com [x] sem ter sido feita: quem marca é o maestro.`);
-  }
-  return erros;
-}
-
 export function marcarFatia(texto, id, feita) {
   const de = feita ? ' ' : 'x';
   const para = feita ? 'x' : ' ';
@@ -207,6 +187,15 @@ export function escreverSecao(texto, nome, corpo) {
   const proxima = linhas.findIndex((linha, indice) => indice > inicio && /^## /.test(linha));
   const depois = proxima < 0 ? [] : ['', ...linhas.slice(proxima)];
   return `${[...linhas.slice(0, inicio + 1), '', corpo.trim(), ...depois].join('\n').trimEnd()}\n`;
+}
+
+// Como escreverSecao, mas uma seção que ainda não existe entra antes da seção "antesDe".
+export function inserirSecao(texto, nome, corpo, antesDe) {
+  const linhas = texto.split('\n');
+  const existe = linhas.some((linha) => linha.trim() === `## ${nome}`);
+  const posicao = linhas.findIndex((linha) => linha.trim() === `## ${antesDe}`);
+  if (existe || posicao < 0) return escreverSecao(texto, nome, corpo);
+  return [...linhas.slice(0, posicao), `## ${nome}`, '', corpo.trim(), '', ...linhas.slice(posicao)].join('\n');
 }
 
 function removerSecao(texto, nome) {

@@ -12,8 +12,9 @@ const IMPORTACAO = /(?:\bfrom\s+|\brequire\(\s*|\bimport\(\s*|\bimport\s+)['"]([
 const SUFIXO_DE_TESTE = /\.(test|spec)$/;
 
 // Compara a árvore de trabalho com a referência: HEAD numa fatia, a base numa PR, ou o commit
-// que o maestro anotou antes de entregar o trabalho a um subagente.
-export function conferirRepo(config, nome, { modo = 'fatia', escopo = [], referencia = null } = {}) {
+// que o maestro anotou antes de entregar o trabalho a um subagente. "liberados" são os caminhos
+// que o humano aprovou no plano.
+export function conferirRepo(config, nome, { modo = 'fatia', escopo = [], referencia = null, liberados = desviosAprovados() } = {}) {
   const pasta = pastaDoRepo(config, nome);
   const repo = config.repos[nome];
   const desde = referencia ?? (modo === 'pr' ? baseDaPr(pasta, repo.base) : 'HEAD');
@@ -23,7 +24,7 @@ export function conferirRepo(config, nome, { modo = 'fatia', escopo = [], refere
     modo,
     escopo,
     prefixo: `${repo.dir}/`,
-    liberados: desviosAprovados(),
+    liberados,
   });
   const lista = diff.arquivos.map(({ caminho, novo, removido }) => ({ caminho, novo, removido }));
   return { achados, arquivos: lista.length, lista };
@@ -154,7 +155,8 @@ function compilar({ config, modo, prefixo, escopo = [] }) {
     exigirTeste: config.testes?.exigirParaArquivoNovo !== false,
     dispensadosDeTeste: globs(config.testes?.dispensados),
     foraDoOrcamento: globs(config.orcamento?.ignorar),
-    limites: config.orcamento?.[modo] ?? {},
+    // Só a fatia tem alvo de tamanho. A PR é do tamanho que a tarefa pedir.
+    limites: modo === 'fatia' ? (config.orcamento?.fatia ?? {}) : {},
   };
 }
 
@@ -184,7 +186,7 @@ function verificacaoDesligada(arquivo, ctx) {
 
 function arquivoProtegido(arquivo, ctx) {
   if (!casa(ctx.protegidos, arquivo.caminho)) return [];
-  return [bloqueio(ctx, arquivo, 'arquivo protegido: só o humano altera (lei, item 7)')];
+  return [bloqueio(ctx, arquivo, 'arquivo protegido: só o humano altera (lei, seção 2)')];
 }
 
 function camadaFurada(arquivo, ctx) {
@@ -205,21 +207,22 @@ function camadaFurada(arquivo, ctx) {
 function foraDoEscopo(arquivo, ctx) {
   if (ctx.escopo.length === 0 || casa(ctx.protegidos, arquivo.caminho)) return [];
   const dentro = ctx.escopo.some((item) => arquivo.caminho === item || arquivo.caminho.startsWith(`${item}/`));
-  return dentro ? [] : [bloqueio(ctx, arquivo, 'fora do escopo da fatia: desfaça ou declare o desvio')];
+  return dentro ? [] : [bloqueio(ctx, arquivo, 'fora do escopo deste trabalho: desfaça ou, se o trabalho precisa mesmo dele, declare com "ESCOPO EXTRA" no resultado')];
 }
 
+// Tamanho nunca reprova: o aviso serve para o planejador fatiar menor da próxima vez.
 function orcamentoEstourado(diff, ctx) {
   const contam = diff.arquivos.filter((a) => !ehTeste(a, ctx) && !casa(ctx.foraDoOrcamento, a.caminho));
   const linhas = contam.reduce((soma, a) => soma + a.adicionadas.length + a.removidas, 0);
   const estouros = [];
   if (ctx.limites.arquivos && contam.length > ctx.limites.arquivos) {
-    estouros.push(`${contam.length} arquivos (máximo ${ctx.limites.arquivos})`);
+    estouros.push(`${contam.length} arquivos (alvo: ${ctx.limites.arquivos})`);
   }
   if (ctx.limites.linhas && linhas > ctx.limites.linhas) {
-    estouros.push(`${linhas} linhas (máximo ${ctx.limites.linhas})`);
+    estouros.push(`${linhas} linhas (alvo: ${ctx.limites.linhas})`);
   }
   if (estouros.length === 0) return [];
-  return [aviso(`diff grande para revisar: ${estouros.join(' e ')}, sem contar testes. Divida.`)];
+  return [aviso(`fatia maior que o alvo: ${estouros.join(' e ')}, sem contar testes. Não bloqueia.`)];
 }
 
 function comentarioDemais(diff, ctx) {
@@ -243,7 +246,7 @@ function pastasNovas(diff, ctx) {
       .filter((a) => a.pastaNova && !ctx.pastasLivres.some((livre) => (ctx.prefixo + a.caminho).startsWith(livre)))
       .map((a) => ctx.prefixo + dirname(a.caminho)),
   );
-  return Array.from(pastas, (pasta) => aviso('pasta nova: confirme que a receita do padrão prevê (lei, item 3)', pasta));
+  return Array.from(pastas, (pasta) => aviso('pasta nova: confirme que a receita do padrão prevê', pasta));
 }
 
 function arquivoNovoSemTeste(diff, ctx) {

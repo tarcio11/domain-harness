@@ -6,17 +6,17 @@ Seus parâmetros: **Tarefa**, **Plano** e **Arquivo de resultado**.
 
 ## Como criticar
 
-Leia a tarefa, o plano e, para cada repositório do plano, `.cursor/rules/padrao-<repo>.mdc`. Abaixo, `<dir>` é a pasta do repositório (`harness/config.json` → `repos.<repo>.dir`). Confira cada item com comandos, não de memória:
+Leia a tarefa, o plano (o "Mapa do código" está nele) e, para cada repositório do plano, `.cursor/rules/padrao-<repo>.mdc`. Abaixo, `<dir>` é a pasta do repositório (`harness/config.json` → `repos.<repo>.dir`). Confira cada item com comandos, não de memória:
 
 1. **Cobertura.** Cada coisa que a tarefa pede aparece em algum critério de aceite? Cada critério é entregue por alguma fatia (veja Entrega e Prova)? O plano faz algo que a tarefa não pediu?
-2. **Espelhos.** Abra cada espelho. Ele faz mesmo algo parecido com o que a fatia cria? Existe um mais parecido? Procure pela receita da regra de padrão e com `git -C <dir> ls-files | grep <termo>`.
+2. **Espelhos.** Abra cada espelho. Ele faz mesmo algo parecido com o que a fatia cria? O mapa aponta um mais parecido? Procure pela receita da regra de padrão e com `git -C <dir> ls-files | grep <termo>`.
 3. **Escopo.** Para cada espelho, rode `git -C <dir> grep -n "<nome do espelho, sem extensão>"`. Os arquivos que registram o espelho (rotas, injeção de dependência, `index`, menus) estão no Escopo da fatia? O arquivo de teste está no Escopo?
-4. **Fatias.** Cada uma fica verde sozinha? Alguma usa algo que só nasce numa fatia posterior? Alguma é grande demais para `orcamento.fatia` de `harness/config.json`? Meça pelo espelho: `wc -l <dir>/<espelho>`.
-5. **Desvios.** O plano precisa de algum dos 8 desvios da lei que não está em "Desvios pendentes"? (dependência nova, pasta ou camada nova, arquivo protegido, contrato existente alterado, interface fora do design system, arquivo sem espelho)
+4. **Fatias.** Cada uma fica verde sozinha? Alguma usa algo que só nasce numa fatia posterior? Alguma entrega mais de um comportamento, ou não cabe com folga em `orcamento.fatia` de `harness/config.json`? Meça pelo espelho: `wc -l <dir>/<espelho>`. Fatia grande é achado: a correção é dividir.
+5. **Limites.** O plano fura algum limite da lei (seção 2): dependência nova, arquivo protegido, importação que a camada não pode fazer, interface fora do design system, verificação desligada? Limite não se planeja: o que depende dele sai das fatias e vai para "Premissas".
 6. **Contrato.** Com dois repositórios: o contrato tem rota, método, entrada, saída e erros, no formato de um contrato que já existe?
-7. **Premissas e dúvidas.** Alguma premissa muda o desenho e devia ser uma dúvida para o humano? Alguma dúvida se responde olhando o código?
+7. **Premissas.** Alguma premissa contraria o que o código já faz? (Abra o arquivo e confira.) Alguma decisão fora do padrão ficou sem linha em "Premissas"?
 
-Só é achado o que faria a execução falhar, fugir do padrão ou entregar algo diferente do pedido. Preferência de redação, ou outra forma igualmente válida de fatiar, não é achado.
+Só é achado o que faria a execução falhar, fugir do padrão ou entregar algo diferente do pedido. Preferência de redação, ou outra forma igualmente válida de fatiar, não é achado. Premissa razoável não é achado: ninguém vai responder dúvidas, e o plano tem que decidir.
 
 ## O que gravar
 

@@ -2,7 +2,9 @@
 
 Você é o QA da tarefa, não o autor. Você testa na tela, como um usuário, e relata. Você não altera código nem o plano: o que falhar volta para um executor.
 
-Seus parâmetros: **Tarefa**, **Plano**, **Relatório do QA** (arquivo que você grava), **Resposta do humano** e **Arquivo de resultado**.
+Ninguém vai responder perguntas. O que você não conseguir testar, diga no resultado, com o motivo: não simule.
+
+Seus parâmetros: **Tarefa**, **Plano**, **Relatório do QA** (arquivo que você grava) e **Arquivo de resultado**.
 
 ## Passos
 

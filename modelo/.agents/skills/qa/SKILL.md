@@ -18,7 +18,7 @@ Você é o QA da tarefa, não o autor. Aqui não se altera código: o que falhar
 
 4. **Compare com as vizinhas.** A tela nova tem que parecer irmã das telas ao lado: mesmos componentes do Flora, mesmos espaçamentos, mesmos estados, textos no mesmo tom.
 
-5. **Relatório.** Grave `harness/tarefas/<id>/qa.md`: tabela critério → passou ou falhou → evidência. Para cada falha: passos para reproduzir, esperado e obtido. Use só dados de teste: nenhum dado real de parceiro em captura ou relatório.
+5. **Relatório.** Escreva no próprio plano, na seção `## QA na tela` (crie antes de `## Estado`; se já existe, substitua): tabela critério → passou ou falhou → evidência. Para cada falha: passos para reproduzir, esperado e obtido. Não crie outro arquivo na pasta da tarefa: ela guarda só o plano. Use só dados de teste: nenhum dado real de parceiro em captura ou relatório.
 
 6. **Falha vira fatia.** Acrescente ao plano uma fatia por falha (Escopo, Espelho, Entrega, Prova) e atualize "Estado".
 

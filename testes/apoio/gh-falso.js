@@ -36,9 +36,9 @@ function verPr() {
   const pr = prDe(args[2]);
   if (!pr) sair(1, '', `no pull requests found for branch "${args[2]}"\n`);
   if (pr.state === 'OPEN') pr.headRefOid = cabecaRemota(pr.branch) ?? pr.headRefOid;
-  const { number, url, isDraft, state, headRefOid } = pr;
+  const { number, url, isDraft, state, headRefOid, title, body } = pr;
   const mergeable = pr.mergeable ?? (estado.conflitoAoCriar ? 'CONFLICTING' : 'MERGEABLE');
-  sair(0, JSON.stringify({ number, url, isDraft, state, headRefOid, mergeable }));
+  sair(0, JSON.stringify({ number, url, isDraft, state, headRefOid, mergeable, headRefName: pr.branch, title, body }));
 }
 
 function criarPr() {
@@ -83,7 +83,14 @@ if (args[0] === 'pr' && args[1] === 'ready') {
   sair(0);
 }
 if (args[0] === 'pr' && args[1] === 'edit') {
+  if (estado.falharAoEditar) sair(1, '', 'GraphQL: Projects (classic) is being deprecated in favor of the new Projects experience\n');
   prDe(args[2]).body = fs.readFileSync(valor('--body-file'), 'utf8');
+  sair(0);
+}
+// A API REST troca só o corpo da PR: é o segundo caminho quando o "pr edit" falha.
+if (args[0] === 'api' && valor('--method') === 'PATCH') {
+  const numero = /pulls\/(\d+)$/.exec(args.find((arg) => arg.startsWith('repos/')))[1];
+  prDe(numero).body = fs.readFileSync(valor('-F').replace(/^body=@/, ''), 'utf8');
   sair(0);
 }
 if (args[0] === 'run') sair(0, 'job\tpasso\t2026-01-01T00:00:00.000Z erro no passo de lint\n');

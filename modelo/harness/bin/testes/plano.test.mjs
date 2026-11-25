@@ -1,7 +1,7 @@
 // node --test harness/bin/testes/*.test.mjs
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { definirStatus, errosDeAjuste, escreverSecao, lerPlano, marcarFatia, seloDoPlano, validarPlano } from '../plano.mjs';
+import { definirStatus, escreverSecao, inserirSecao, lerPlano, marcarFatia, seloDoPlano, validarPlano } from '../plano.mjs';
 
 const PLANO = `# ABC-1 — parser de vendas
 
@@ -24,7 +24,7 @@ Expor as vendas por parceiro.
 
 ## Fatias
 
-Uma fatia = uma conversa = um commit.
+Uma fatia = um comportamento com o teste dele = um commit pequeno.
 
 - [x] **F1 · backend · parser de vendas**
   - Escopo: \`src/parsers/\`, \`src/routes/index.ts\`
@@ -51,9 +51,13 @@ Uma fatia = uma conversa = um commit.
 
 ## Desvios aprovados
 
-## Decisões do humano
+## Decisões no caminho
 
-- 2026-01-01 (plano): aprovado
+—
+
+## Pendências
+
+—
 
 ## Estado
 
@@ -91,7 +95,7 @@ test('o validador aponta cada erro de formato com o formato certo ao lado', () =
   assert.match(erros, /Critério fora do formato: "- \[ \] dado um parceiro/);
   assert.match(erros, /Linha de fatia fora do formato: "- \[ \] F2 - backend - rota de vendas"\. O formato é exatamente: - \[ \] \*\*F1 · backend · nome da fatia\*\*/);
   assert.match(erros, /F1: Escopo "\.\.\/fora" tem que ser relativo à pasta do repositório/);
-  assert.match(erros, /F1: Escopo "package\.json" é arquivo protegido\. Isso é desvio/);
+  assert.match(erros, /F1: Escopo "package\.json" é arquivo protegido: só o humano altera\. Tire do Escopo e planeje sem mexer nele/);
   assert.match(erros, /F1: o Espelho "src\/parsers\/estoque\.parser\.ts" não existe em pasta-que-nao-existe\//);
 });
 
@@ -114,7 +118,8 @@ test('o selo ignora o que o maestro reescreve e muda com qualquer outra alteraç
     marcarFatia(PLANO, 'F2', true),
     marcarFatia(PLANO, 'F1', false),
     escreverSecao(PLANO, 'Estado', '- Pronto: F1, F2\n- Próximo passo: PR'),
-    escreverSecao(PLANO, 'Decisões do humano', '- 2026-01-02 (desvio): opção A'),
+    escreverSecao(PLANO, 'Decisões no caminho', '- backend: F1: usei o parser de estoque como base'),
+    escreverSecao(PLANO, 'Pendências', '- backend: a fatia F2 não fechou'),
     PLANO.replace('- [x] CA2', '- [ ] CA2'),
   ];
   for (const texto of doMaestro) assert.equal(seloDoPlano(texto), selo);
@@ -129,18 +134,16 @@ test('o selo ignora o que o maestro reescreve e muda com qualquer outra alteraç
   for (const texto of adulterados) assert.notEqual(seloDoPlano(texto), selo);
 });
 
-test('num plano em execução, o que já foi feito ou está em curso não muda, e ninguém ganha [x] no papel', () => {
-  const antes = lerPlano(PLANO);
-  const nova = ['- [ ] **F3 · backend · cache**', '  - Escopo: `src/cache/`', '  - Espelho: `src/cache/base.ts`', '  - Entrega: cache', '  - Prova: teste'].join('\n');
-  const comFatiaNova = PLANO.replace('## Premissas', `${nova}\n\n## Premissas`);
-  assert.deepEqual(errosDeAjuste(antes, lerPlano(comFatiaNova), 'F2'), []);
-  assert.deepEqual(errosDeAjuste(antes, lerPlano(PLANO.replace('`src/routes/`', '`src/routes/`, `src/config/`')), 'F2'), [], 'o escopo da fatia em curso pode mudar');
+test('inserirSecao põe o mapa do código antes das fatias, troca o que já existir e entra no selo', () => {
+  const comMapa = inserirSecao(PLANO, 'Mapa do código', '### Entrega mais parecida\nEstoque por parceiro.', 'Fatias');
+  assert.match(comMapa, /## Contrato\n\n<Só quando[^\n]*>\n\n## Mapa do código\n\n### Entrega mais parecida\nEstoque por parceiro\.\n\n## Fatias/);
+  assert.equal(lerPlano(comMapa).fatias.length, 2, 'títulos de terceiro nível não quebram a leitura do plano');
+  assert.deepEqual(validarPlano(lerPlano(comMapa), CONFIG).filter((erro) => !/Espelho/.test(erro)), []);
 
-  const erros = (texto) => errosDeAjuste(antes, lerPlano(texto), 'F2').join('\n');
-  assert.match(erros(marcarFatia(PLANO, 'F1', false)), /A fatia F1 já foi feita: devolva a marca \[x\]/);
-  assert.match(erros(marcarFatia(PLANO, 'F2', true)), /A fatia F2 está marcada com \[x\] sem ter sido feita/);
-  assert.match(erros(PLANO.replace('F2 · backend · rota de vendas', 'F2 · backend · outra coisa')), /A fatia F2 \(rota de vendas\) já foi feita ou está em curso/);
-  assert.match(erros(PLANO.replace('feature/ABC-1-parser', 'feature/outra')), /A linha Branch não pode mudar/);
+  const trocado = inserirSecao(comMapa, 'Mapa do código', '### Entrega mais parecida\nOutra.', 'Fatias');
+  assert.equal(trocado.match(/## Mapa do código/g).length, 1);
+  assert.match(trocado, /### Entrega mais parecida\nOutra\./);
+  assert.notEqual(seloDoPlano(trocado), seloDoPlano(comMapa), 'depois de aprovado, o mapa não muda sem o selo acusar');
 });
 
 test('escreverSecao troca o corpo de uma seção do meio sem tocar nas vizinhas, e cria a que falta', () => {

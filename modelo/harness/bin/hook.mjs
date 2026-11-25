@@ -21,9 +21,9 @@ const JANELA_DO_MESMO_EVENTO_MS = 15000;
 const FERRAMENTAS_QUE_EDITAM = /^(apply_patch|Edit|Write)$/i;
 const MAESTRO = 'node harness/bin/maestro.mjs';
 // Os comandos que conduzem: são da conversa principal (o operador), nunca de um subagente.
-const COMANDO_DE_CONDUCAO = /maestro\.mjs["']?\s+(iniciar|proximo|retomar|encerrar)\b/;
+const COMANDO_DE_CONDUCAO = /maestro\.mjs["']?\s+(iniciar|revisar|proximo|retomar|encerrar)\b/;
 // Chamada simples de um script do harness, sem nada encadeado: dispensa a confirmação do humano.
-const SCRIPT_DO_HARNESS = /^\s*node\s+(\.\/)?harness\/bin\/(maestro|portoes|esperar-checks|doutor)\.mjs(\s+[\w@%+=:,.\/-]+)*\s*$/;
+const SCRIPT_DO_HARNESS = /^\s*node\s+(\.\/)?harness\/bin\/(maestro|portoes|esperar-checks|doutor)\.mjs(\s+[\w@%+=:,./-]+)*\s*$/;
 // Quantas vezes o operador é empurrado sem que o maestro tenha andado. Depois disso o turno termina.
 const MAXIMO_DE_EMPURROES = { seguir: 2, abrir: 1 };
 const SO_O_OPERADOR = {
@@ -34,12 +34,12 @@ const SO_O_OPERADOR = {
 const RESPOSTA_E_DO_HUMANO = {
   permissao: 'deny',
   regra: 'resposta-do-humano',
-  mensagem: 'A resposta a um PARE tem que vir do humano, numa mensagem dele depois do PARE. Mostre a ele o texto do PARE e encerre o seu turno; não escreva a resposta por ele.',
+  mensagem: 'Quem libera um bloqueio (PARE) é o humano, numa mensagem dele depois do PARE. Mostre a ele o texto do PARE e encerre o seu turno; não retome por ele.',
 };
 const LARGAR_E_DO_HUMANO = {
   permissao: 'ask',
   regra: 'largar-conducao',
-  mensagem: 'Largar a condução do /entregar é decisão do humano.',
+  mensagem: 'Largar a condução do maestro é decisão do humano.',
 };
 
 const JULGAR = { shell: julgarShell, parar: julgarParada, compactar: julgarCompactacao };
@@ -250,7 +250,7 @@ function mensagemDaCatraca(bloqueios) {
     `CATRACA DO HARNESS — o diff desta conversa tem ${bloqueios.length} bloqueio(s):`,
     ...visiveis,
     ...(ocultos > 0 ? [`… e mais ${ocultos}. Lista completa: node harness/bin/portoes.mjs <repo> --so-diff`] : []),
-    'Corrija a causa agora. Se for um desvio legítimo, não contorne: desfaça a mudança, responda com o bloco DESVIO DE PADRÃO e espere o humano.',
+    'Corrija a causa agora. Isto é limite da lei (seção 2): não contorne. Se o trabalho não fecha sem ele, desfaça a mudança, entregue o resto e registre a pendência.',
   ].join('\n');
 }
 
@@ -258,7 +258,7 @@ function julgarCompactacao(entrada) {
   const uso = typeof entrada.context_usage_percent === 'number' ? ` (uso em ${Math.round(entrada.context_usage_percent)}%)` : '';
   const conselho = conducaoAberta()
     ? 'A condução do maestro está no disco: se o agente se perder, abra uma conversa nova e mande /entregar, sem tarefa, para continuar de onde parou.'
-    : 'A fatia ficou grande para uma janela só: peça para atualizar o "Estado" do plano e continue numa conversa nova.';
+    : 'O trabalho ficou grande para uma janela só: peça para atualizar o "Estado" do plano e continue numa conversa nova.';
   return { aviso: `Harness: a conversa vai ser compactada${uso}. ${conselho}` };
 }
 

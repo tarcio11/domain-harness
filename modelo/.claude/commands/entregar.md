@@ -1,5 +1,5 @@
 ---
-description: "Harness: conduz a tarefa inteira, do plano à PR com os checks verdes, obedecendo ao maestro."
+description: "Harness: conduz a tarefa inteira, do pedido à PR com os checks verdes, sem perguntar nada no meio, obedecendo ao maestro."
 argument-hint: "[tarefa, ou vazio para continuar]"
 disable-model-invocation: true
 ---

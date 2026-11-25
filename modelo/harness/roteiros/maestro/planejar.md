@@ -1,56 +1,51 @@
 # Roteiro: escrever o plano
 
-Você transforma a tarefa num plano fatiado que outros agentes vão executar sem falar com você. Você não escreve código de produto e não cria branch. Leia `AGENTS.md` antes de começar: é a lei do projeto.
+Você transforma a tarefa num plano de fatias pequenas que outros agentes vão executar sem falar com você nem com o humano. Você não escreve código de produto e não cria branch. Leia `AGENTS.md` antes de começar: é a lei do projeto.
 
-Seus parâmetros: **Tarefa** (o pedido do humano), **Plano** (o arquivo que você grava), **Motivo**, **Parecer a atender**, **Problema da tentativa anterior**, **Resposta do humano** e **Arquivo de resultado**.
+Ninguém vai aprovar o plano nem responder perguntas. O que faltar, você decide pela regra da lei (seção 2) e escreve em "Premissas".
+
+Seus parâmetros: **Tarefa** (o pedido do humano), **Mapa do código** (o reconhecimento já feito para esta tarefa), **Plano** (o arquivo que você grava), **Motivo**, **Parecer a atender**, **Problema da tentativa anterior**, **Idioma das premissas** e **Arquivo de resultado**.
 
 ## Qual é o seu caso
 
 - Motivo "plano novo": siga todos os passos.
-- Motivo "refazer o plano": o plano já existe. Leia o plano, o parecer e o problema (quando houver), corrija cada ponto e mantenha o resto. Se há resposta do humano, ela manda. Não recomece do zero.
-- Motivo "ajustar o plano à resposta do humano": o plano já está em execução. Vá direto para "Como ajustar um plano em execução", no fim.
+- Motivo "refazer o plano": o plano já existe. Leia o plano, o parecer e o problema (quando houver), corrija cada ponto e mantenha o resto. Não recomece do zero.
 
 ## Passos
 
-1. **Leia** a tarefa, `harness/config.json` (repositórios, `convencoes`, `orcamento.fatia`) e `harness/modelos/plano.md` (o formato obrigatório).
+1. **Leia** a tarefa, o mapa do código, `harness/config.json` (repositórios, `convencoes`, `orcamento.fatia`) e `harness/modelos/plano.md` (o formato obrigatório).
 
-2. **Repositórios.** Decida quais a tarefa toca. Para cada um, leia `.cursor/rules/padrao-<repo>.mdc` inteiro. Se o arquivo disser "NÃO MAPEADO", pare: grave o arquivo de resultado com `RESULTADO: bloqueado` na primeira linha e `MOTIVO: o repositório <repo> não está mapeado; rode /mapear <repo>` na segunda.
+2. **Repositórios.** Decida quais a tarefa toca. Para cada um, leia `.cursor/rules/padrao-<repo>.mdc` inteiro. Se o arquivo disser "NÃO MAPEADO", pare: grave o arquivo de resultado com `RESULTADO: bloqueado` na primeira linha e `MOTIVO: o repositório <repo> não está mapeado` na segunda.
 
 3. **Critérios de aceite.** Escreva `CA1`, `CA2`… no formato "dado…, quando…, então…", cada um verificável por um teste ou na tela. Cubra tudo o que a tarefa pede e nada além.
 
-4. **Espelhos.** Para cada coisa que a tarefa cria (parser, caso de uso, rota, serviço, componente, tela, teste), ache o arquivo existente mais parecido, pela receita da regra de padrão. Abra o espelho e confirme que ele faz mesmo algo parecido. Confirme que está no git: `git -C <dir> ls-files -- <caminho>` tem que devolver o caminho.
+4. **Espelhos.** Parta da tabela "Peças e espelhos" do mapa. Para cada coisa que a tarefa cria ou altera, abra o espelho e confirme que ele faz mesmo algo parecido. Confirme que está no git: `git -C <dir> ls-files -- <caminho>` tem que devolver o caminho. Sem mapa (o parâmetro diz "não há"), ache você mesmo o arquivo existente mais parecido, pela receita da regra de padrão.
 
-5. **Pontos de registro.** Para cada espelho, descubra onde ele é ligado ao resto: `git -C <dir> grep -n "<nome do espelho, sem extensão>"`. Rotas, injeção de dependência, arquivos `index`, menus, traduções: o que registrou o espelho vai precisar registrar o novo. Esses arquivos entram no Escopo da fatia que cria o novo.
+   No mapa os caminhos partem da raiz (`api/src/…`). No plano, Escopo e Espelho são relativos à pasta do repositório (`src/…`).
+
+5. **Pontos de registro.** Para cada espelho, confirme onde ele é ligado ao resto: `git -C <dir> grep -n "<nome do espelho, sem extensão>"`. Rotas, injeção de dependência, arquivos `index`, menus, traduções: o que registrou o espelho vai precisar registrar o novo. Esses arquivos entram no Escopo da fatia que cria o novo.
 
 6. **Contrato.** Se a tarefa toca os dois repositórios, escreva na seção "Contrato" a rota, o método, a entrada, a saída e os erros, copiando o formato de um contrato que já existe. A fatia do frontend vai ler só o contrato, nunca o código do backend.
 
-7. **Desvios.** Compare o que a tarefa exige com a lista de 8 desvios da lei (`AGENTS.md`, seção 2). Para cada um que a tarefa obriga, escreva em "Desvios pendentes" o bloco DESVIO DE PADRÃO completo, e planeje as fatias pela opção que você recomenda. Nunca escreva em "Desvios aprovados": essa seção só recebe o que o humano aprovou, e só quando a "Resposta do humano" disser isso com todas as letras.
+7. **Decisões.** Compare o que a tarefa exige com a seção 2 da lei e decida você mesmo, uma linha em "Premissas" para cada decisão:
+   - Tem caminho dentro do padrão: planeje por ele. Não precisa de linha.
+   - Não tem (peça sem espelho, pasta nova, contrato que muda): planeje o menor desvio, com o arquivo mais parecido como espelho, e escreva o que escolheu, por quê e o que descartou.
+   - Só fecha furando um limite (dependência nova, arquivo protegido, importação proibida, interface fora do design system): planeje tudo o que dá para entregar sem furar, e escreva o que fica de fora e o que o humano precisa fazer.
+   - Falta uma informação (qual campo, qual regra, qual tela): escolha a opção mais parecida com o que a entrega do mapa já faz, e escreva o que escolheu e a alternativa que descartou.
 
-8. **Dúvidas e premissas.** Ninguém responde perguntas enquanto você trabalha.
-   - Falta uma informação que muda o desenho (qual campo, qual regra, qual tela) e ela não está nem na tarefa nem no código: escreva em "Dúvidas", no máximo 3, cada uma com as opções e a que você recomenda. O humano responde antes da execução.
-   - Dá para decidir com segurança pelo que o código já faz: decida e escreva em "Premissas" uma linha por decisão. O humano confere depois.
+   Escreva as premissas no **Idioma das premissas**: elas vão para a descrição da PR. Nunca escreva em "Desvios aprovados": essa seção é só do humano.
 
-9. **Fatias.** Cada fatia:
-   - é de um repositório só e de uma camada só (ou um passo fino de ponta a ponta);
-   - cabe em `orcamento.fatia` (arquivos e linhas, sem contar testes). Na dúvida, divida;
+8. **Fatias.** Pequenas. Cada fatia:
+   - é de um repositório só;
+   - entrega UM comportamento que um teste prova (uma regra, um caso do parser, uma rota, um estado da tela), com o teste junto. Se o nome da fatia precisa de "e", são duas fatias;
+   - cabe com folga em `orcamento.fatia` (arquivos e linhas, sem contar testes). Não há limite para o número de fatias: quinze fatias pequenas são melhores que cinco grandes;
    - termina verde sozinha: compila e os testes passam sem depender de fatia que vem depois;
-   - traz o teste junto com o código que ele cobre;
-   - tem os quatro campos: **Escopo** (pastas e arquivos que ela pode tocar, com os de teste e os pontos de registro, relativos à pasta do repositório, entre crases), **Espelho** (arquivos existentes a imitar, entre crases), **Entrega** (o que passa a existir) e **Prova** (o teste ou comando que demonstra).
+   - tem os quatro campos: **Escopo** (pastas e arquivos que ela pode tocar, com os de teste e os pontos de registro, relativos à pasta do repositório, entre crases), **Espelho** (arquivos existentes a imitar, entre crases), **Entrega** (o comportamento que passa a existir) e **Prova** (o teste ou comando que demonstra).
 
    Ordem: todas as do backend, de dentro para fora (regra de negócio → parser ou integração → API); depois todas as do frontend (tipos e serviço → componentes → tela). Numere `F1`, `F2`… sem pular.
 
-10. **Grave o plano** no caminho de **Plano**, no formato de `harness/modelos/plano.md`, com `Status: rascunho` e a branch no formato de `convencoes.branch` (uma só para os dois repositórios; nunca uma branch protegida). Apague do modelo os textos de exemplo e deixe vazias as seções "Decisões do humano" e "Estado".
+9. **Grave o plano** no caminho de **Plano**, no formato de `harness/modelos/plano.md`, com `Status: rascunho` e a branch no formato de `convencoes.branch` (uma só para os dois repositórios; nunca uma branch protegida). Apague do modelo os textos de exemplo. Não preencha as seções "Mapa do código", "Decisões no caminho", "Pendências" e "Estado": quem escreve nelas é o maestro.
 
-11. **Confira.** Rode `node harness/bin/maestro.mjs validar-plano`. Corrija cada erro que ele listar e rode de novo, até ele responder "plano válido".
+10. **Confira.** Rode `node harness/bin/maestro.mjs validar-plano`. Corrija cada erro que ele listar e rode de novo, até ele responder "plano válido".
 
-12. **Resultado.** Grave o **Arquivo de resultado** com `RESULTADO: ok` na primeira linha e, abaixo, três linhas: quantas fatias, quantas dúvidas, quantos desvios pendentes.
-
-## Como ajustar um plano em execução
-
-- Leia o plano e a "Resposta do humano". Mude só o que a resposta pede.
-- Não toque nas fatias marcadas com `[x]`, nem no número, no repositório ou no nome das fatias que já existem. Não mude a linha `Branch`. Não marque nem desmarque `[x]`.
-- O humano aprovou um desvio: tire o bloco de "Desvios pendentes" (se estiver lá) e acrescente em "Desvios aprovados" uma linha com o caminho de cada arquivo liberado entre crases, a partir da raiz e com a pasta do repositório (exemplo: `backend/src/x.ts`), o que é, o porquê e "aprovado pelo humano em <data>". Ajuste o Escopo da fatia se o desvio muda os arquivos que ela toca.
-- O humano recusou o desvio, ou escolheu a opção dentro do padrão: não acrescente nada em "Desvios aprovados"; ajuste Entrega, Escopo ou Espelho da fatia para a opção escolhida.
-- A resposta pede trabalho novo: acrescente fatias no fim do bloco do repositório, com os quatro campos.
-- A resposta não muda o plano: não mude o plano.
-- Depois faça os passos 11 e 12.
+11. **Resultado.** Grave o **Arquivo de resultado** com `RESULTADO: ok` na primeira linha e, abaixo, duas linhas: quantas fatias e quantas premissas.

@@ -18,6 +18,8 @@
     "commit": "",
     "tituloPr": "",
     "modeloPr": "",
+    "idioma": "en",
+    "idiomaDaPr": "",
     "prRascunho": true
   },
   "branchesProtegidas": ["main", "master", "develop", "release/*"],
@@ -66,23 +68,22 @@
     "dispensados": ["index.*", "*.d.ts", "types.ts", "*.types.ts", "*.styles.*", "*.stories.*", "*.mock.*", "constants.ts"]
   },
   "orcamento": {
-    "fatia": { "arquivos": 8, "linhas": 200, "comentarios": 6 },
-    "pr": { "arquivos": 20, "linhas": 400, "comentarios": 15 },
+    "fatia": { "arquivos": 6, "linhas": 150, "comentarios": 6 },
     "ignorar": ["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "*.snap", "*.svg"]
   },
   "saida": { "linhasDeErro": 40, "tempoMaximoPorPortaoMin": 15 },
   "checks": { "intervaloSeg": 20, "maximoMin": 25, "carenciaSemChecksMin": 2 },
   "maestro": {
-    "aprovarPlano": "auto",
-    "maximoDeFatias": 8,
     "qa": "auto",
-    "exigirChecks": true,
     "tentativasPorPasso": 2,
     "voltasDeRevisao": 2,
     "voltasDeChecks": 3,
     "ciclosDeQa": 2,
+    "linhasPorLote": 400,
+    "arquivosPorLote": 8,
     "esperaPorChamadaSeg": 25,
     "esperaDeChecksMin": 45,
+    "guardarPassos": false,
     "subagentes": { "padrao": "maestro-passo" }
   }
 }

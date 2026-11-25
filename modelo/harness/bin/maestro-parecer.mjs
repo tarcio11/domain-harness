@@ -8,6 +8,12 @@ import { crase, dirDoRepo } from './maestro-base.mjs';
 const LINHA_DE_ACHADO = /^\s*\d+[.)]\s+\S/;
 const LINHA_DE_COMPARACAO = /^\s*[-*]\s*`?([^\s`]+)`?\s*(?:↔|<-+>|<=+>|-+>|→|=+>)\s*`?([^\s`]+)`?/;
 
+// Os achados de um parecer, em uma linha cada, para registrar como ponto em aberto.
+export function achadosDoParecer(resultado, maximo = 5) {
+  const achados = resultado.texto.split('\n').filter((linha) => LINHA_DE_ACHADO.test(linha)).map((linha) => linha.trim().replace(/^\d+[.)]\s+/, ''));
+  return achados.length > maximo ? [...achados.slice(0, maximo), `… e mais ${achados.length - maximo}`] : achados;
+}
+
 // Devolve os erros de formato do parecer. "comparar" só vem na revisão de código: aí um APROVADO
 // precisa de uma linha de comparação para cada arquivo novo.
 export function errosDoParecer(m, resultado, comparar = null) {

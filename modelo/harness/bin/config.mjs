@@ -9,6 +9,9 @@ export const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 const CAMINHO_DA_CONFIG = join(RAIZ, 'harness', 'config.json');
 const PASTA_DE_TAREFAS = join(RAIZ, 'harness', 'tarefas');
+// O livro da condução do maestro (/entregar ou /revisar). Só o livro.mjs lê e grava; o caminho
+// fica aqui porque a catraca precisa saber qual plano vale enquanto há uma condução aberta.
+export const CAMINHO_DO_LIVRO = join(RAIZ, 'harness', '.maestro', 'conducao', 'livro.json');
 
 export function lerConfig() {
   return JSON.parse(readFileSync(CAMINHO_DA_CONFIG, 'utf8'));
@@ -70,11 +73,24 @@ export function tarefaAtual() {
   return readFileSync(ponteiro, 'utf8').trim() || null;
 }
 
+// O que o humano liberou no plano. Com uma condução aberta vale o plano dela; uma revisão
+// (/revisar) não tem plano, e então nada está liberado.
 export function desviosAprovados() {
-  const id = tarefaAtual();
+  const conducao = conducaoEmCurso();
+  if (conducao?.tipo === 'revisao') return [];
+  const id = conducao?.tarefa ?? tarefaAtual();
   if (!id) return [];
   const plano = join(PASTA_DE_TAREFAS, id, 'plano.md');
   return existsSync(plano) ? extrairDesvios(readFileSync(plano, 'utf8')) : [];
+}
+
+function conducaoEmCurso() {
+  try {
+    const livro = JSON.parse(readFileSync(CAMINHO_DO_LIVRO, 'utf8'));
+    return livro.encerrado ? null : livro;
+  } catch {
+    return null;
+  }
 }
 
 // Os caminhos liberados são os trechos entre crases da seção "Desvios aprovados" do plano.

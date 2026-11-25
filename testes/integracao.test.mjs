@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
@@ -85,10 +85,16 @@ test('instala a base e os adaptadores pedidos, e reconhece backend e frontend', 
     'harness/bin/maestro.mjs',
     'harness/roteiros/revisor.md',
     'harness/roteiros/maestro/executar.md',
+    'harness/roteiros/maestro/reconhecer.md',
+    'harness/roteiros/maestro/mapear.md',
+    'harness/roteiros/maestro/revisar-pr.md',
     '.agents/skills/entregar/SKILL.md',
+    '.agents/skills/revisar/SKILL.md',
+    '.agents/skills/revisar/agents/openai.yaml',
     '.cursor/agents/maestro-passo.md',
     '.claude/agents/maestro-passo.md',
     '.claude/commands/entregar.md',
+    '.claude/commands/revisar.md',
     'harness/.instalado.json',
   ]) {
     assert.ok(existsSync(join(raiz, arquivo)), `faltou ${arquivo}`);
@@ -169,7 +175,7 @@ test('reinstalar atualiza o motor, preserva o que é do projeto e não atropela 
   const config = join(raiz, 'harness', 'config.json');
   const guarda = join(raiz, 'harness', 'bin', 'guarda.mjs');
   writeFileSync(lei, `${readFileSync(lei, 'utf8')}\nRegra só minha.\n`);
-  writeFileSync(config, readFileSync(config, 'utf8').replace('"linhas": 200', '"linhas": 150'));
+  writeFileSync(config, readFileSync(config, 'utf8').replace('"linhas": 150', '"linhas": 90'));
 
   // Simula versão antiga do motor: arquivo diferente do pacote, mas igual ao que o manifesto registrou.
   const manifesto = join(raiz, 'harness', '.instalado.json');
@@ -187,7 +193,7 @@ test('reinstalar atualiza o motor, preserva o que é do projeto e não atropela 
   assert.match(r.saida, /AGENTS\.md {2}→ {2}junte à mão/);
   assert.match(readFileSync(lei, 'utf8'), /Regra só minha/);
   assert.ok(existsSync(`${lei}.novo`));
-  assert.match(readFileSync(config, 'utf8'), /"linhas": 150/);
+  assert.match(readFileSync(config, 'utf8'), /"linhas": 90/);
   assert.notEqual(readFileSync(guarda, 'utf8'), antigo);
 });
 
@@ -217,8 +223,9 @@ test('ao atualizar, o instalador fala da raiz como ela está: repositórios do c
     }
     const primeira = rodar('node', [INSTALADOR, outraRaiz]);
     assert.match(primeira.saida, /não deu para decidir sozinho \(achei: api, web\)/);
-    assert.match(primeira.saida, /3\. Conversa nova: \/mapear backend {3}· {3}outra conversa nova: \/mapear frontend\n/);
-    assert.match(primeira.saida, /4\. Depois de mapear: \/entregar <tarefa>/);
+    assert.match(primeira.saida, /4\. \/entregar <tarefa> {10}do pedido à PR com os checks verdes, sem perguntar nada no meio/);
+    assert.match(primeira.saida, /5\. \/revisar <branch ou PR> {5}revisa linha por linha uma branch que já existe/);
+    assert.match(primeira.saida, /6\. Falta mapear o padrão de: backend e frontend\. O maestro mapeia sozinho na primeira condução; para ler e aprovar antes, rode \/mapear <repo>\.\n/);
 
     // O que o /mapear deixa: as pastas no config e, por enquanto, só o padrão do backend.
     const config = join(outraRaiz, 'harness', 'config.json');
@@ -227,14 +234,39 @@ test('ao atualizar, o instalador fala da raiz como ela está: repositórios do c
     const segunda = rodar('node', [INSTALADOR, outraRaiz]);
     assert.match(segunda.saida, /do projeto, mantidos: 2 · conflitos: 0/);
     assert.match(segunda.saida, /Repositórios: backend → api · frontend → web\n/);
-    assert.match(segunda.saida, /3\. Conversa nova: \/mapear frontend\n/);
-    assert.doesNotMatch(segunda.saida, /\/mapear backend/);
+    assert.match(segunda.saida, /6\. Falta mapear o padrão de: frontend\. /);
 
     writeFileSync(regra('frontend'), '---\nglobs: web/**\n---\n# Padrão do frontend\n');
     const terceira = rodar('node', [INSTALADOR, outraRaiz]);
     assert.match(terceira.saida, /do projeto, mantidos: 3 · conflitos: 0/);
-    assert.doesNotMatch(terceira.saida, /\/mapear/);
-    assert.match(terceira.saida, /3\. \/entregar <tarefa>[^\n]*\n {5}No Cursor, para ele andar sozinho: [^\n]*allowlist de comandos\n/);
+    assert.doesNotMatch(terceira.saida, /Falta mapear/);
+    assert.match(terceira.saida, /3\. No Cursor, para o maestro andar sozinho: [^\n]*allowlist de comandos\n/);
+  } finally {
+    rmSync(outraRaiz, { recursive: true, force: true });
+  }
+});
+
+test('atualizando da versão 0.3: os arquivos de condução que ficavam na pasta da tarefa são apontados, e --limpar apaga só eles', () => {
+  const outraRaiz = mkdtempSync(join(tmpdir(), 'harness-teste-'));
+  const tarefa = join(outraRaiz, 'harness', 'tarefas', 'PARC-1-antiga');
+  try {
+    rodar('node', [INSTALADOR, outraRaiz]);
+    mkdirSync(join(tarefa, 'passos'), { recursive: true });
+    for (const nome of ['plano.md', 'qa.md', 'maestro.json', 'plano.selado.md', 'tarefa.md', 'pr-backend.md', 'pr-backend.final.md', 'passos/01-plano.pedido.md']) {
+      writeFileSync(join(tarefa, nome), 'x\n');
+    }
+    writeFileSync(join(outraRaiz, 'harness', 'tarefas', 'RESPOSTA.md'), 'aprovado\n');
+
+    const aviso = rodar('node', [INSTALADOR, outraRaiz]);
+    assert.match(aviso.saida, /RESTOS de condução — 7 arquivo\(s\) que a versão anterior deixava nas pastas de tarefa/);
+    assert.match(aviso.saida, /Para apagar \(os planos ficam\): rode o instalador de novo com --limpar/);
+    assert.ok(existsSync(join(tarefa, 'maestro.json')), 'sem --limpar, nada é apagado');
+
+    const limpeza = rodar('node', [INSTALADOR, outraRaiz, '--limpar']);
+    assert.match(limpeza.saida, /LIMPEZA — apaguei 7 arquivo\(s\) de condução da versão anterior das pastas de tarefa\. Os planos ficaram\./);
+    assert.deepEqual(readdirSync(tarefa).sort(), ['plano.md', 'qa.md']);
+    assert.ok(!existsSync(join(outraRaiz, 'harness', 'tarefas', 'RESPOSTA.md')));
+    assert.doesNotMatch(rodar('node', [INSTALADOR, outraRaiz, '--limpar']).saida, /LIMPEZA|RESTOS de condução/);
   } finally {
     rmSync(outraRaiz, { recursive: true, force: true });
   }
@@ -245,8 +277,9 @@ test('o doutor enxerga repositórios e adaptadores, e os testes da catraca passa
   assert.match(doutor.saida, /Claude Code: hooks do harness/);
   assert.match(doutor.saida, /Codex: \.codex\/hooks\.json aponta para esta raiz/);
   assert.match(doutor.saida, /backend: repositório em "api-x"/);
-  assert.match(doutor.saida, /\/entregar: roteiros do maestro presentes/);
-  assert.match(doutor.saida, /\/entregar: subagente maestro-passo/);
+  assert.match(doutor.saida, /✔ maestro: roteiros presentes/);
+  assert.match(doutor.saida, /✔ maestro: subagente maestro-passo/);
+  assert.match(doutor.saida, /rode \/mapear backend \(ou deixe: o \/entregar e o \/revisar mapeiam sozinhos na primeira vez\)/);
 
   const unitarios = rodar('node', ['--test', join(raiz, 'harness', 'bin', 'testes', 'guarda.test.mjs'), join(raiz, 'harness', 'bin', 'testes', 'conferir.test.mjs')]);
   assert.equal(unitarios.codigo, 0, unitarios.saida);

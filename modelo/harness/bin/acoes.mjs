@@ -2,8 +2,8 @@
 // O modelo escreve código; quem cria branch, faz commit, push e PR é este módulo.
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { branchAtual, git, RAIZ } from './config.mjs';
 import { reciboValePara } from './recibo.mjs';
 
@@ -11,10 +11,11 @@ const BIN = join(RAIZ, 'harness', 'bin');
 const PASTA_DE_SERVICOS = join(RAIZ, 'harness', '.maestro');
 const CORES_ANSI = /\u001b\[[0-9;?]*[A-Za-z]/g;
 const TETO_DE_COMANDO_CURTO_MS = 45 * 1000;
+const BUSCA_CURTA_MS = 12 * 1000;
 const SERVICO_SEM_SINAL_MS = 15 * 1000;
 const SERVICO_VELHO_MS = 24 * 60 * 60 * 1000;
 const MINUTO = 60 * 1000;
-const CAMPOS_DA_PR = 'number,url,isDraft,state,headRefOid,mergeable';
+const CAMPOS_DA_PR = 'number,url,isDraft,state,headRefOid,mergeable,headRefName,title,body';
 
 function rodar(programa, args, pasta, tetoMs = TETO_DE_COMANDO_CURTO_MS) {
   const r = spawnSync(programa, args, { cwd: pasta, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: tetoMs });
@@ -35,6 +36,52 @@ export const arvoreLimpa = (pasta) => git(pasta, ['status', '--porcelain']).said
 export const prepararParaRevisao = (pasta) => git(pasta, ['add', '-A']).ok;
 export const existeNoCommit = (pasta, referencia, caminho) => git(pasta, ['cat-file', '-e', `${referencia}:${caminho}`]).ok;
 export const temOrigem = (pasta) => git(pasta, ['remote', 'get-url', 'origin']).ok;
+export const existeRef = (pasta, ref) => git(pasta, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).ok;
+export const commitsAFrente = (pasta, base, ref) => Number(git(pasta, ['rev-list', '--count', `${base}..${ref}`]).saida) || 0;
+// Busca curta, de melhor esforço: quem precisa da busca completa usa entrarNaBranch, que espera em segundo plano.
+export const buscarRemoto = (pasta) => rodar('git', ['fetch', 'origin'], pasta, BUSCA_CURTA_MS).ok;
+
+// Os nomes de branch que o repositório conhece, locais e do GitHub.
+export function ramos(pasta) {
+  const refs = git(pasta, ['for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes/origin']).saida.split('\n');
+  const nomes = refs.map((ref) => ref.replace(/^refs\/heads\//, '').replace(/^refs\/remotes\/origin\//, '')).filter((nome) => nome && nome !== 'HEAD');
+  return Array.from(new Set(nomes));
+}
+
+// Arquivos que a branch mudou desde a referência, com o tamanho da mudança de cada um.
+export function arquivosMudados(pasta, referencia) {
+  return git(pasta, ['diff', '--numstat', '--diff-filter=d', '--no-renames', `${referencia}...HEAD`])
+    .saida.split('\n')
+    .filter(Boolean)
+    .map((linha) => {
+      const [mais, menos, ...caminho] = linha.split('\t');
+      return { caminho: caminho.join('\t'), linhas: (Number(mais) || 0) + (Number(menos) || 0) };
+    });
+}
+
+// Desfaz tudo o que mudou desde a referência, na branch da tarefa: o que estava sem commit e os
+// commits que não são do maestro. Antes, guarda o que vai jogar fora num patch, para ninguém perder trabalho.
+export function descartar(pasta, branch, referencia, arquivoDoPatch) {
+  git(pasta, ['add', '-A']);
+  const diff = rodar('git', ['diff', '--cached', '--binary', referencia], pasta).stdout;
+  const guardou = diff.trim() !== '';
+  if (guardou) {
+    mkdirSync(dirname(arquivoDoPatch), { recursive: true });
+    writeFileSync(arquivoDoPatch, diff);
+  }
+  if (branchAtual(pasta) !== branch) rodar('git', ['checkout', '-f', branch], pasta);
+  rodar('git', ['reset', '--hard', referencia], pasta);
+  rodar('git', ['clean', '-fd'], pasta);
+  return guardou;
+}
+
+// Arquivo que os portões geram e o .gitignore do repositório não cobre: fica ignorado só nesta
+// máquina (.git/info/exclude), sem tocar em arquivo versionado.
+export function ignorarLocalmente(pasta, caminhos) {
+  const arquivo = join(pasta, '.git', 'info', 'exclude');
+  mkdirSync(dirname(arquivo), { recursive: true });
+  appendFileSync(arquivo, `${['', '# harness: gerado pelos portões', ...caminhos.map((caminho) => `/${caminho}`)].join('\n')}\n`);
+}
 
 // ------------------------------------------------------------------ serviços em segundo plano
 // Uma chamada do maestro tem que voltar em segundos. O que pode demorar roda num processo solto
@@ -117,9 +164,10 @@ export function limparServicosVelhos() {
 // --------------------------------------------------------------------------------------- git
 
 // Entra na branch da tarefa. Antes busca o remoto: é também o primeiro teste de que o git
-// alcança o GitHub, feito antes de qualquer código ser escrito.
-export function entrarNaBranch(pasta, branch, base, nome, prazo) {
-  if (branchAtual(pasta) === branch && !servicoPendente(nome)) return { estado: 'ok' };
+// alcança o GitHub, feito antes de qualquer código ser escrito. Com "sempre", busca e acerta a
+// branch com a do GitHub mesmo que o repositório já esteja nela.
+export function entrarNaBranch(pasta, branch, base, nome, prazo, { sempre = false } = {}) {
+  if (!sempre && branchAtual(pasta) === branch && !servicoPendente(nome)) return { estado: 'ok' };
   if (!arvoreLimpa(pasta)) {
     return { estado: 'erro', erro: `Há mudanças sem commit em ${pasta}. O maestro não troca de branch com a árvore suja.` };
   }
@@ -132,7 +180,8 @@ export function entrarNaBranch(pasta, branch, base, nome, prazo) {
   const existe = (ref) => git(pasta, ['rev-parse', '--verify', '--quiet', ref]).ok;
   const remota = `refs/remotes/origin/${branch}`;
   let troca;
-  if (existe(`refs/heads/${branch}`)) troca = rodar('git', ['checkout', branch], pasta);
+  if (branchAtual(pasta) === branch) troca = { ok: true };
+  else if (existe(`refs/heads/${branch}`)) troca = rodar('git', ['checkout', branch], pasta);
   else if (existe(remota)) troca = rodar('git', ['checkout', '--no-track', '-b', branch, `origin/${branch}`], pasta);
   else if (existe(`refs/remotes/origin/${base}`)) troca = rodar('git', ['checkout', '--no-track', '-b', branch, `origin/${base}`], pasta);
   else return { estado: 'erro', erro: `A branch base origin/${base} não existe em ${pasta}. Corrija repos.*.base em harness/config.json.` };
@@ -188,7 +237,17 @@ export function prDaBranch(pasta, alvo) {
   if (r.ausente) return { erro: 'O GitHub CLI (gh) não está instalado ou não está no PATH.' };
   try {
     const pr = JSON.parse(r.stdout);
-    return { numero: pr.number, url: pr.url, rascunho: pr.isDraft, estado: pr.state, cabeca: pr.headRefOid, conflito: pr.mergeable === 'CONFLICTING' };
+    return {
+      numero: pr.number,
+      url: pr.url,
+      rascunho: pr.isDraft,
+      estado: pr.state,
+      cabeca: pr.headRefOid,
+      conflito: pr.mergeable === 'CONFLICTING',
+      branch: pr.headRefName ?? null,
+      titulo: pr.title ?? '',
+      corpo: pr.body ?? '',
+    };
   } catch {
     return null;
   }
@@ -199,8 +258,13 @@ export function criarPr(pasta, { base, branch, titulo, arquivoDoCorpo, rascunho 
   return rodar('gh', rascunho ? [...args, '--draft'] : args, pasta);
 }
 
-export const atualizarCorpoDaPr = (pasta, numero, arquivoDoCorpo) =>
-  rodar('gh', ['pr', 'edit', String(numero), '--body-file', arquivoDoCorpo], pasta);
+// "gh pr edit" falha em algumas versões do gh por motivos alheios à descrição (campos de projeto
+// que o GitHub aposentou). A API REST troca só o corpo, e serve de segundo caminho.
+export function atualizarCorpoDaPr(pasta, numero, arquivoDoCorpo) {
+  const editada = rodar('gh', ['pr', 'edit', String(numero), '--body-file', arquivoDoCorpo], pasta);
+  if (editada.ok) return editada;
+  return rodar('gh', ['api', '--method', 'PATCH', `repos/{owner}/{repo}/pulls/${numero}`, '-F', `body=@${arquivoDoCorpo}`, '--silent'], pasta);
+}
 export const marcarPronta = (pasta, numero) => rodar('gh', ['pr', 'ready', String(numero)], pasta);
 
 // Uma leitura curta dos checks: o maestro chama de novo até terminar (códigos de saída no esperar-checks.mjs).

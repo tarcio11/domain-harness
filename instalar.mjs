@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 // Instala ou atualiza o harness numa raiz de trabalho:
-//   node instalar.mjs <raiz> [--com claude,codex] [--forcar]
+//   node instalar.mjs <raiz> [--com claude,codex] [--forcar] [--limpar]
 // O motor (lei, roteiros, scripts) é atualizado a cada execução. O que é do projeto
 // (config, padrões mapeados, tarefas) e o que você editou nunca é sobrescrito.
+// --limpar apaga das pastas de tarefa os arquivos de condução que a versão 0.3 deixava lá.
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const VERSAO = '0.3.0';
-const USO = 'Uso: node instalar.mjs <raiz> [--com claude,codex] [--forcar]';
+const VERSAO = '0.4.0';
+const USO = 'Uso: node instalar.mjs <raiz> [--com claude,codex] [--forcar] [--limpar]';
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const MODELO = join(AQUI, 'modelo');
 const MANIFESTO = 'harness/.instalado.json';
@@ -23,11 +24,12 @@ const SINAIS_DE_FRONTEND = ['react', 'react-scripts', 'next', 'vue', '@angular/c
 class ErroDeUso extends Error {}
 
 function lerArgumentos(argumentos) {
-  const opcoes = { raiz: null, com: [], forcar: false };
+  const opcoes = { raiz: null, com: [], forcar: false, limpar: false };
   for (let i = 0; i < argumentos.length; i++) {
     const a = argumentos[i];
     if (a === '--com') opcoes.com = (argumentos[++i] ?? '').split(',').filter(Boolean);
     else if (a === '--forcar') opcoes.forcar = true;
+    else if (a === '--limpar') opcoes.limpar = true;
     else if (a.startsWith('--')) throw new ErroDeUso(`Opção desconhecida: ${a}\n${USO}`);
     else if (!opcoes.raiz) opcoes.raiz = resolve(a);
     else throw new ErroDeUso(USO);
@@ -158,6 +160,22 @@ function restosDaVersaoAnterior(raiz) {
     .filter((pasta) => existsSync(join(raiz, pasta, 'SKILL.md')));
 }
 
+// Até a versão 0.3 o livro, os pedidos e as respostas de cada condução ficavam dentro da pasta da
+// tarefa. Agora ela guarda só o plano, e esses arquivos são resto. Relatório que o humano pediu
+// (o qa.md do /qa antigo, uma auditoria do /conferir) não é resto de condução: fica.
+const DE_CONDUCAO_ANTIGA = /^(maestro\.json|maestro\.trava|plano\.selado\.md|tarefa\.md|passos|pr-[\w.-]+\.md)$/;
+
+function restosDeConducao(raiz) {
+  const tarefas = join(raiz, 'harness', 'tarefas');
+  if (!existsSync(tarefas)) return [];
+  const itens = readdirSync(tarefas, { withFileTypes: true });
+  const soltos = itens.filter((item) => item.isFile() && ['ENTRADA.md', 'RESPOSTA.md'].includes(item.name)).map((item) => item.name);
+  const dasTarefas = itens
+    .filter((item) => item.isDirectory())
+    .flatMap((pasta) => readdirSync(join(tarefas, pasta.name)).filter((nome) => DE_CONDUCAO_ANTIGA.test(nome)).map((nome) => `${pasta.name}/${nome}`));
+  return [...soltos, ...dasTarefas].map((caminho) => `harness/tarefas/${caminho}`);
+}
+
 // O relatório fala da raiz como ela ficou, não do que o instalador detectou: numa atualização,
 // os repositórios e o mapeamento já estão nos arquivos do projeto, que o instalador não toca.
 function reposDaRaiz(raiz) {
@@ -178,18 +196,17 @@ function proximosPassos(daRaiz) {
   const passos = [
     'node harness/bin/doutor.mjs            (na raiz; lista o que falta)',
     'No Cursor: reabra a pasta como confiável e confira os três hooks em Customize → Hooks',
+    'No Cursor, para o maestro andar sozinho: "node harness/bin/maestro.mjs" e "node harness/bin/portoes.mjs" na allowlist de comandos',
+    '/entregar <tarefa>          do pedido à PR com os checks verdes, sem perguntar nada no meio (veja docs/exemplo.md)',
+    '/revisar <branch ou PR>     revisa linha por linha uma branch que já existe, refatora, faz push e atualiza a PR',
   ];
   if (porMapear.length > 0) {
-    passos.push(porMapear.map((nome, i) => `${i === 0 ? 'Conversa nova' : 'outra conversa nova'}: /mapear ${nome}`).join('   ·   '));
+    passos.push(`Falta mapear o padrão de: ${porMapear.join(' e ')}. O maestro mapeia sozinho na primeira condução; para ler e aprovar antes, rode /mapear <repo>.`);
   }
-  passos.push(
-    `${porMapear.length > 0 ? 'Depois de mapear: ' : ''}/entregar <tarefa> leva do plano à PR com os checks verdes (veja docs/exemplo.md)\n` +
-      '     No Cursor, para ele andar sozinho: "node harness/bin/maestro.mjs" e "node harness/bin/portoes.mjs" na allowlist de comandos',
-  );
   return passos;
 }
 
-function relatar({ raiz, com }, { repos, porSituacao }) {
+function relatar({ raiz, com, limpar }, { repos, porSituacao }) {
   const quantos = (situacao) => porSituacao[situacao].length;
   const daRaiz = reposDaRaiz(raiz);
   console.log(`HARNESS ${VERSAO} em ${raiz} (ferramentas: ${['cursor', ...com].join(', ')})`);
@@ -211,6 +228,14 @@ function relatar({ raiz, com }, { repos, porSituacao }) {
   if (restos.length > 0) {
     console.log('RESTOS da versão anterior — os roteiros agora ficam em .agents/skills; apague estas pastas para não ver comando duplicado:');
     for (const pasta of restos) console.log(`  ${pasta}`);
+  }
+  const deConducao = restosDeConducao(raiz);
+  if (deConducao.length > 0 && limpar) {
+    for (const caminho of deConducao) rmSync(join(raiz, caminho), { recursive: true, force: true });
+    console.log(`LIMPEZA — apaguei ${deConducao.length} arquivo(s) de condução da versão anterior das pastas de tarefa. Os planos ficaram.`);
+  } else if (deConducao.length > 0) {
+    console.log(`RESTOS de condução — ${deConducao.length} arquivo(s) que a versão anterior deixava nas pastas de tarefa (maestro.json, passos/, pr-*.md…) e que esta não usa mais.`);
+    console.log('  Para apagar (os planos ficam): rode o instalador de novo com --limpar');
   }
   console.log('Próximos passos:');
   proximosPassos(daRaiz).forEach((passo, i) => console.log(`  ${i + 1}. ${passo}`));

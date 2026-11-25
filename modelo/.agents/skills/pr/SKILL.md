@@ -20,13 +20,15 @@ Nos comandos abaixo, `<repo>` é `backend` ou `frontend`; `<dir>` e `<base>` sã
 
 3. **Portões.** `node harness/bin/portoes.mjs <repo> --pr`. Só segue com `RESULTADO: APROVADO`.
 
-4. **Descrição.** Escreva `harness/tarefas/<id>/pr-<repo>.md` no modelo de PR do repositório (`convencoes.modeloPr`). Sem modelo, use estas seções, curtas:
+4. **Descrição.** Escreva `harness/trabalho/pr-<repo>.md` (arquivo temporário; apague depois de publicar) no modelo de PR do repositório (`convencoes.modeloPr`). Sem modelo, use estas seções, curtas:
    - **O que e por quê** — 3 linhas, com o card;
    - **Como revisar** — ordem de leitura dos arquivos e o que é espelho de quê;
-   - **Provas** — a linha `RESULTADO` dos portões e o resumo do QA, se houver;
-   - **Desvios aprovados** — cópia do plano, ou "nenhum";
-   - **Avisos da catraca** — cada um com o motivo de estar ok;
+   - **Provas** — a linha `RESULTADO` dos portões e o resumo do QA (seção "QA na tela" do plano), se houver;
+   - **Decisões** — cópia de "Premissas" e de "Decisões no caminho" do plano, ou "nenhuma";
+   - **Pendências** — cópia de "Pendências" do plano; com pendência, a PR abre em rascunho;
    - **Fora do escopo** — o que você viu e não mexeu.
+
+   Título e descrição no idioma de `convencoes.idioma` (a descrição, no de `convencoes.idiomaDaPr`, se a chave existir).
 
 5. **Publique.** `git -C <dir> push -u origin <branch>`. Depois, dentro de `<dir>`:
    - se a PR ainda não existe (`gh pr view` não acha): `gh pr create --base <base> --title "<no formato de convencoes.tituloPr>" --body-file <caminho absoluto de pr-<repo>.md>`, com `--draft` se `convencoes.prRascunho` for `true`;

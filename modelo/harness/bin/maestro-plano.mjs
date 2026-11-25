@@ -1,23 +1,18 @@
-// A primeira parte da condução: escrever o plano, criticá-lo, aprová-lo e, depois de uma decisão
-// do humano no meio do caminho, ajustá-lo.
+// A primeira parte de uma entrega: escrever o plano, criticá-lo e aprová-lo. Ninguém é chamado
+// para aprovar: o que o plano decidiu sozinho fica em "Premissas" e vai para a descrição da PR.
 
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { extrairDesvios, RAIZ } from './config.mjs';
+import { extrairDesvios } from './config.mjs';
 import {
-  anotarProblema, atualizarEstado, COMANDO, crase, crases, despachar, emLista, gravarNoPasso, gravarPlano, orientacao, parar, pendenciasDosRepos,
-  planoAtual, registrar, relativo, selarPlano, textoDoPlano,
+  anotarProblema, atualizarEstado, avisar, bi, bloquear, crase, decidir, despachar, emLista, encerrarConducao, esquecerPasso, gravarPlano, idiomas,
+  mapaParaOPlano, pendenciasDosRepos, planoAtual, registrar, relativo, reposDoPlano, respeitarOQueEDoHumano, selarPlano, textoDoPlano,
 } from './maestro-base.mjs';
-import { errosDoParecer } from './maestro-parecer.mjs';
-import { definirStatus, errosDeAjuste, lerPlano, validarPlano } from './plano.mjs';
-
-const PEDIDO_DE_APROVACAO = 'Responda "aprovado" para o maestro seguir, ou diga o que mudar no plano.';
+import { achadosDoParecer, errosDoParecer } from './maestro-parecer.mjs';
+import { definirStatus, inserirSecao, lerPlano, validarPlano } from './plano.mjs';
 
 export function conduzirPlano(m) {
   const p = m.livro.planejamento;
-  if (!existsSync(m.caminhoDaTarefa) && !textoDoPlano(m)) {
-    return parar(m, 'falha', 'plano', `Não achei nem a tarefa nem o plano em ${relativo(m.pasta)}. Largue esta condução (${crase(`${COMANDO} encerrar`)}) e comece de novo com /entregar <tarefa>.`);
-  }
+  const { pedido, arquivoDoMapa } = m.livro.preparo;
+  const mapa = arquivoDoMapa ? crase(arquivoDoMapa) : '(não há: ache os espelhos você mesmo, pela regra de padrão)';
   if (p.fase === 'plano') {
     return despachar(m, {
       chave: 'plano',
@@ -25,12 +20,14 @@ export function conduzirPlano(m) {
       papel: 'planejar',
       titulo: 'Escrever o plano',
       limite: 1 + m.opcoes.tentativasPorPasso + m.opcoes.voltasDeRevisao,
+      seEsgotar: semPlano,
       parametros: {
-        Tarefa: crase(relativo(m.caminhoDaTarefa)),
+        Tarefa: crase(pedido),
+        'Mapa do código': mapa,
         Plano: crase(relativo(m.caminhoDoPlano)),
-        Motivo: motivoDoPlano(m, p),
+        Motivo: p.base || m.livro.problemas.plano ? 'refazer o plano, corrigindo o que o parecer e o problema apontam' : 'plano novo',
         'Parecer a atender': p.base ? crase(p.base) : '(nenhum)',
-        'Resposta do humano': orientacao(m, 'plano'),
+        'Idioma das premissas': `${idiomas(m).pr} (elas vão para a descrição da PR)`,
       },
     });
   }
@@ -40,42 +37,52 @@ export function conduzirPlano(m) {
       tipo: 'critica',
       papel: 'criticar',
       titulo: 'Criticar o plano',
-      orientacao: 'plano',
-      parametros: { Tarefa: crase(relativo(m.caminhoDaTarefa)), Plano: crase(relativo(m.caminhoDoPlano)) },
+      seEsgotar: () => {
+        avisar(m, 'O crítico do plano não devolveu um parecer válido; o plano seguiu com a validação de formato e de espelhos.');
+        p.fase = 'aprovar';
+        return null;
+      },
+      parametros: { Tarefa: crase(pedido), Plano: `${crase(relativo(m.caminhoDoPlano))} (o mapa do código está nele)` },
     });
   }
-  return portaoDoPlano(m);
+  return aprovarPlano(m);
 }
 
-function motivoDoPlano(m, p) {
-  if (m.livro.orientacoes.plano) return 'refazer o plano seguindo a resposta do humano';
-  if (p.base || m.livro.problemas.plano) return 'refazer o plano, corrigindo o que o parecer e o problema apontam';
-  return 'plano novo';
+// Sem plano válido não há o que conduzir: a condução termina dizendo por quê.
+function semPlano(m, { resumo, detalhe }) {
+  const linhas = ['NÃO ENTREGUE — não consegui escrever um plano válido para esta tarefa.', `${resumo.pt}.`];
+  if (detalhe) linhas.push('', 'Último problema:', detalhe);
+  linhas.push('', 'Nada foi alterado nos repositórios. Mande /entregar de novo com a tarefa mais detalhada (o que muda, onde, e os critérios de aceite).');
+  return encerrarConducao(m, 'sem plano', linhas.join('\n'));
 }
 
 export function receberPlano(m, espera, resultado) {
   const p = m.livro.planejamento;
   if (resultado.resultado === 'bloqueado') {
-    return parar(m, 'humano', 'plano', ['O planejador não conseguiu planejar:', resultado.texto, 'Resolva e responda.'].join('\n\n'));
+    return bloquear(m, 'plano', ['O planejador não conseguiu planejar:', resultado.texto].join('\n\n'));
   }
   const texto = textoDoPlano(m);
   const erros = texto ? validarPlano(lerPlano(texto), m.config) : [`O plano não foi gravado em ${relativo(m.caminhoDoPlano)}.`];
-  if (texto && !m.livro.orientacoes.plano && extrairDesvios(texto).length > 0) {
-    erros.push('A seção "Desvios aprovados" só recebe o que o humano aprovou. Mova o que está lá para "Desvios pendentes".');
+  if (texto && extrairDesvios(texto).length > 0) {
+    erros.push('A seção "Desvios aprovados" é só do humano: deixe vazia. O que você decidiu sozinho vai em "Premissas".');
   }
   if (erros.length > 0) {
     anotarProblema(m, 'plano', ['O plano tem erros de formato ou de fato. Corrija todos:', ...emLista(erros)].join('\n'));
     return null;
   }
-  const pendencias = pendenciasDosRepos(m, lerPlano(texto));
+  const plano = lerPlano(texto);
+  const pendencias = pendenciasDosRepos(m, reposDoPlano(m, plano));
   if (pendencias.length > 0) {
-    return parar(m, 'humano', 'plano', ['O plano toca repositório que ainda não está pronto para o harness:', ...emLista(pendencias), 'Resolva e responda.'].join('\n'));
+    return bloquear(m, 'plano', ['O plano toca repositório que ainda não está pronto para o harness:', ...emLista(pendencias)].join('\n'));
   }
-  gravarPlano(m, definirStatus(texto, 'rascunho'));
+  // O mapa do reconhecimento entra no plano: é o que executores e revisores vão seguir.
+  const mapa = mapaParaOPlano(m);
+  const comMapa = mapa ? inserirSecao(texto, 'Mapa do código', mapa, 'Fatias') : texto;
+  gravarPlano(m, definirStatus(comMapa, 'rascunho'));
   atualizarEstado(m, 'crítica do plano');
-  delete m.livro.problemas.plano;
+  esquecerPasso(m, 'plano');
   Object.assign(p, { base: null, fase: 'critica' });
-  registrar(m, 'plano escrito e validado');
+  registrar(m, `plano escrito e validado (${plano.fatias.length} fatias)`);
   return null;
 }
 
@@ -87,98 +94,45 @@ export function receberCritica(m, espera, resultado) {
     return null;
   }
   if (resultado.veredito === 'APROVADO') {
-    p.fase = 'portao';
+    p.fase = 'aprovar';
     registrar(m, 'o crítico aprovou o plano');
     return null;
   }
   p.voltas += 1;
   if (p.voltas > m.opcoes.voltasDeRevisao) {
-    const texto = [`O crítico reprovou o plano ${p.voltas} vezes. Último parecer:`, resultado.texto, PEDIDO_DE_APROVACAO];
-    return parar(m, 'plano', 'plano', texto.join('\n\n'));
+    avisar(m, `O crítico ainda apontava problemas no plano depois de ${p.voltas} rodadas, e o plano seguiu assim. Pontos em aberto: ${achadosDoParecer(resultado).join(' · ')}`);
+    p.fase = 'aprovar';
+    return null;
   }
   Object.assign(p, { base: espera.arquivo, fase: 'plano' });
   registrar(m, 'o crítico reprovou o plano: volta para o planejador');
   return null;
 }
 
-// Sem dúvida, sem desvio e dentro do tamanho, o plano segue sozinho. Qualquer pendência é do humano.
-function portaoDoPlano(m) {
+// O plano validado e criticado segue sozinho. Seções de versões antigas do modelo não param nada.
+function aprovarPlano(m) {
   const plano = planoAtual(m);
-  const pendencias = [];
-  if (plano.duvidas) pendencias.push(`Dúvidas do plano:\n${plano.duvidas}`);
-  if (plano.desviosPendentes) pendencias.push(`Desvios pendentes:\n${plano.desviosPendentes}`);
-  if (plano.fatias.length > m.opcoes.maximoDeFatias) {
-    pendencias.push(`O plano tem ${plano.fatias.length} fatias. Acima de ${m.opcoes.maximoDeFatias}, o maestro pede o seu olhar antes de começar.`);
+  // Agora o maestro sabe em que repositórios vai trabalhar. O que é do humano neles bloqueia já,
+  // de uma vez só e antes da primeira linha de código, e não no meio do caminho.
+  const bloqueio = respeitarOQueEDoHumano(m, reposDoPlano(m, plano));
+  if (bloqueio) return bloqueio;
+  if (plano.duvidas || plano.desviosPendentes) {
+    decidir(
+      m,
+      bi(
+        'O plano trazia dúvidas ou desvios em aberto; a execução seguiu pela opção que o próprio plano recomenda em cada um.',
+        'The plan had open questions or deviations; the work followed the option the plan itself recommends for each one.',
+      ),
+    );
   }
-  if (pendencias.length === 0 && m.opcoes.aprovarPlano !== 'sempre') {
-    aprovarPlano(m, 'sem você: o validador e o crítico aprovaram, e não havia dúvida nem desvio');
-    return null;
-  }
-  return parar(m, 'plano', 'plano', [resumoDoPlano(m, plano), ...pendencias, PEDIDO_DE_APROVACAO].join('\n\n'));
-}
-
-function resumoDoPlano(m, plano) {
-  const linhas = [`PLANO — ${plano.titulo} (${relativo(m.caminhoDoPlano)})`, plano.objetivo, ...plano.fatias.map((fatia) => `- ${fatia.id} · ${fatia.repo} · ${fatia.nome}`)];
-  if (plano.premissas) linhas.push(`Premissas:\n${plano.premissas}`);
-  return linhas.join('\n');
-}
-
-export function aprovarPlano(m, como) {
   gravarPlano(m, definirStatus(textoDoPlano(m), 'aprovado'));
-  atualizarEstado(m, 'o maestro segue conduzindo');
   m.livro.planoAprovado = true;
-  selarPlano(m);
-  m.livro.decisoes.push(`Plano aprovado ${como}.`);
-  registrar(m, `plano aprovado ${como}`);
-}
-
-// Com o plano já em execução, só a resposta do humano a um PARE muda o plano, e por um planejador.
-export function conduzirAjuste(m) {
-  const ajuste = m.livro.ajuste;
-  ajuste.planoAntes ??= gravarNoPasso(m, 'plano-antes-do-ajuste.md', textoDoPlano(m));
-  return despachar(m, {
-    chave: `ajuste-${ajuste.numero}`,
-    tipo: 'ajuste',
-    papel: 'planejar',
-    titulo: 'Ajustar o plano à resposta do humano',
-    orientacao: ajuste.passo,
-    parametros: {
-      Tarefa: existsSync(m.caminhoDaTarefa) ? crase(relativo(m.caminhoDaTarefa)) : '(sem arquivo: o plano já diz o que é a tarefa)',
-      Plano: crase(relativo(m.caminhoDoPlano)),
-      Motivo: 'ajustar o plano à resposta do humano (o plano já está em execução)',
-      'Parecer a atender': ajuste.arquivo ? crase(ajuste.arquivo) : '(nenhum)',
-      'Resposta do humano': ajuste.resposta,
-    },
-  });
-}
-
-export function receberAjuste(m, espera) {
-  const ajuste = m.livro.ajuste;
-  const texto = textoDoPlano(m);
-  const antesTexto = readFileSync(join(RAIZ, ajuste.planoAntes), 'utf8');
-  const antes = lerPlano(antesTexto);
-  const depois = lerPlano(texto ?? '');
-  const emCurso = m.livro.unidade?.depois.tipo === 'fatia' ? m.livro.unidade.depois.id : null;
-  const erros = texto ? [...validarPlano(depois, m.config), ...errosDeAjuste(antes, depois, emCurso)] : ['O plano sumiu.'];
-  if (erros.length > 0) {
-    // A tentativa seguinte parte de novo do plano aprovado, não do que esta deixou.
-    gravarPlano(m, antesTexto);
-    anotarProblema(m, espera.chave, ['O plano ajustado pela tentativa anterior tinha erros, e o maestro devolveu o plano ao que era. Ao ajustar de novo, não repita:', ...emLista(erros)].join('\n'));
-    return null;
-  }
-  const desviosNovos = extrairDesvios(texto).filter((caminho) => !extrairDesvios(antesTexto).includes(caminho));
-  if (desviosNovos.length > 0) m.livro.decisoes.push(`Desvio registrado como aprovado depois da sua resposta: ${crases(desviosNovos)}.`);
-  const fatiasNovas = depois.fatias.filter((fatia) => !antes.fatias.some((antiga) => antiga.id === fatia.id));
-  if (fatiasNovas.length > 0) m.livro.decisoes.push(`Fatias acrescentadas ao plano depois da sua resposta: ${fatiasNovas.map((fatia) => fatia.id).join(', ')}.`);
-
-  const unidade = m.livro.unidade;
-  const fatia = depois.fatias.find((item) => item.id === emCurso);
-  if (fatia) Object.assign(unidade, { escopo: fatia.escopo, espelhos: fatia.espelho });
-
-  gravarPlano(m, definirStatus(texto, 'aprovado'));
   atualizarEstado(m, 'o maestro segue conduzindo');
   selarPlano(m);
-  m.livro.ajuste = null;
-  registrar(m, 'plano ajustado à resposta do humano');
+  m.livro.planejamento.base = null;
+  // Daqui em diante o mapa é o do plano: o arquivo de passo já pode ser podado.
+  Object.assign(m.livro.preparo, { mapaNoPlano: Boolean(m.livro.preparo.arquivoDoMapa), arquivoDoMapa: null });
+  esquecerPasso(m, 'critica');
+  registrar(m, `plano aprovado: ${plano.fatias.length} fatias`);
   return null;
 }
