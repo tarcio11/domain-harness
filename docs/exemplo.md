@@ -1,6 +1,6 @@
 # Do setup à primeira entrega
 
-Um exemplo completo de uso do harness, na ordem em que as coisas acontecem. O projeto é inventado, mas tem a forma para a qual o harness foi feito:
+Um exemplo completo de uso do harness, na ordem em que as coisas acontecem: o setup, o mapeamento, a primeira tarefa passo a passo (Parte 3) e a mesma tarefa no piloto automático (Parte 4). O projeto é inventado, mas tem a forma para a qual o harness foi feito:
 
 - raiz `~/trabalho/parceiros/`, que não é um repositório;
 - `api-parceiros/`: backend Node.js + TypeScript em camadas, que lê dados do Looker, passa por parsers e expõe por API;
@@ -21,8 +21,8 @@ node ~/domain-harness/instalar.mjs ~/trabalho/parceiros --com claude,codex
 ```
 
 ```text
-HARNESS 0.2.0 em /Users/voce/trabalho/parceiros (ferramentas: cursor, claude, codex)
-  criados: 43 · atualizados: 0 · iguais: 0 · do projeto, mantidos: 0 · conflitos: 0
+HARNESS 0.3.0 em /Users/voce/trabalho/parceiros (ferramentas: cursor, claude, codex)
+  criados: 65 · atualizados: 0 · iguais: 0 · do projeto, mantidos: 0 · conflitos: 0
 Repositórios: backend → api-parceiros · frontend → web-parceiros
 ```
 
@@ -60,7 +60,9 @@ Corrijo à mão o que estiver errado e respondo as dúvidas. Depois olho `harnes
 
 Agora `node harness/bin/doutor.mjs` termina com `RESULTADO: tudo certo`.
 
-## Parte 3 — A primeira tarefa
+## Parte 3 — A primeira tarefa, passo a passo
+
+É o jeito de conhecer o harness: cada etapa numa conversa, eu no meio de todas. Depois que o mapa estiver bom, a Parte 4 faz o mesmo caminho sozinha.
 
 O card: **PARC-482 — Mostrar o sell-out mensal por canal na página do parceiro.** O dado vem de um look novo do Looker.
 
@@ -233,7 +235,147 @@ Respondo que sim. O que o revisor pegou uma vez virou lei: a próxima tarefa já
 
 O colega aprova e faz o merge das duas PRs. Eu troco `Status` do plano para `concluído`. Na próxima tarefa, `/planejar` aponta `harness/tarefas/ATUAL` para o plano novo.
 
-## Parte 4 — Variações
+## Parte 4 — A mesma tarefa no piloto automático
+
+Tudo o que a Parte 3 fez em onze conversas, o `/entregar` faz numa só, e eu só apareço quando a decisão é minha. O mapa da Parte 2 é o mesmo.
+
+### 15. Preparar (uma vez)
+
+No Cursor, em Settings → Agents → Approvals & Execution, ponho na allowlist de comandos:
+
+```text
+node harness/bin/maestro.mjs
+node harness/bin/portoes.mjs
+```
+
+O maestro faz `git fetch`, `git push` e usa o `gh`. No sandbox, sem rede, ele pararia logo no começo avisando que não alcança o GitHub. `node harness/bin/doutor.mjs` tem que mostrar as duas linhas do `/entregar` em verde.
+
+### 16. Um comando
+
+Conversa nova, com o card inteiro:
+
+```text
+/entregar PARC-482 — Mostrar o sell-out mensal por canal na página do parceiro.
+O dado vem do look 9911 do Looker (colunas: canal, mes, valor).
+Critérios: (1) o card aparece na página do parceiro com um gráfico de barras por canal;
+(2) seletor de mês, padrão no mês atual; (3) sem dado, mostra o estado vazio padrão;
+(4) erro da API mostra o aviso padrão.
+```
+
+A conversa vira o **operador**: grava o meu texto, roda `node harness/bin/maestro.mjs iniciar` e passa a repetir `node harness/bin/maestro.mjs proximo`, fazendo o que a linha `AÇÃO:` manda. Cada chamada devolve algo assim:
+
+```text
+MAESTRO · PARC-482-mostrar-sell-out-mensal · plano
+AÇÃO: SUBAGENTE — Escrever o plano (tentativa 1 de 5)
+1. Abra o subagente `maestro-passo`, em primeiro plano (o que bloqueia até terminar). […]
+2. Passe a ele exatamente o texto entre as linhas ===, sem mudar nem acrescentar nada.
+3. Espere ele terminar. Não leia arquivos nem confira o trabalho dele: quem confere é o maestro.
+4. Rode de novo: node harness/bin/maestro.mjs proximo
+===
+Leia o arquivo `harness/tarefas/PARC-482-mostrar-sell-out-mensal/passos/01-plano.pedido.md` inteiro e faça exatamente o que ele manda, do começo ao fim. Não faça nada além disso. Quando terminar, responda só: feito.
+===
+```
+
+O operador não lê código nem decide nada: repassa uma linha. O arquivo de pedido tem os parâmetros, o roteiro e o formato exato da resposta. O planejador, um subagente com a janela dele, lê o card, o mapa e os espelhos, escreve o plano e confere o formato com `maestro.mjs validar-plano`. Depois um crítico, que não escreveu o plano, procura o que faria a execução falhar: espelho errado, ponto de registro fora do escopo, critério sem fatia.
+
+### 17. A primeira parada: o desvio do gráfico
+
+O plano saiu com um desvio pendente, e desvio é decisão minha. O operador mostra e encerra o turno:
+
+```text
+AÇÃO: PARE
+===
+PLANO — PARC-482 — sell-out por canal (harness/tarefas/PARC-482-mostrar-sell-out-mensal/plano.md)
+Mostrar o sell-out mensal por canal na página do parceiro.
+- F1 · backend · parser do look de sell-out
+- F2 · backend · caso de uso e rota
+- F3 · frontend · tipos e serviço
+- F4 · frontend · card SelloutPorCanal
+- F5 · frontend · card na página do parceiro
+Premissas:
+- O mês padrão é o mês corrente, como no card de estoque.
+
+Desvios pendentes:
+DESVIO DE PADRÃO — aguardando decisão
+O que a tarefa exige: gráfico de barras por canal.
+[…]
+Recomendo: A, e levar B ao time como decisão separada.
+
+Responda "aprovado" para o maestro seguir, ou diga o que mudar no plano.
+===
+```
+
+Respondo na conversa: `Opção A. Não quero dependência nova.` O operador grava a minha resposta em `harness/tarefas/RESPOSTA.md`, roda `maestro.mjs retomar`, e o planejador refaz o plano pela opção A. Sem desvio e sem dúvida, o plano segue sozinho. A minha resposta fica no plano, em "Decisões do humano".
+
+Se eu quisesse aprovar todo plano antes de qualquer código, poria `"aprovarPlano": "sempre"` em `harness/config.json`.
+
+### 18. O que acontece sem mim
+
+Para cada fatia, na ordem do plano:
+
+1. O maestro entra na branch da tarefa (ou cria, a partir da base atualizada) e anota onde o histórico estava.
+2. Um executor implementa pelo espelho, dentro do escopo, roda os portões e grava o resultado com a mensagem de commit.
+3. O maestro confere no git: algo mudou; nada fora do escopo; nenhuma verificação desligada; portões verdes para exatamente aqueles arquivos. Se o executor não rodou os portões, ou mexeu depois de rodar, o maestro roda.
+4. Um revisor de contexto limpo compara o diff com os espelhos. Para aprovar, ele tem que dizer com que espelho comparou cada arquivo novo.
+5. Só então o maestro faz o commit e marca `[x]` na fatia.
+
+Quando algo falha, a conversa nem me chama. Na F2, o executor escreveu `// eslint-disable-next-line` e respondeu "ok". O executor seguinte recebeu, no pedido, o caminho deste arquivo:
+
+```text
+O maestro conferiu o diff e não aceitou. Corrija a causa de cada item:
+- [BLOQUEIO] api-parceiros/src/usecases/sellout/listar-sellout.usecase.ts:18 — desliga o lint (eslint-disable)
+```
+
+Com as fatias do backend prontas, vêm a revisão do conjunto, a descrição da PR (as provas quem escreve é o maestro), o push, a PR em rascunho e a espera dos checks. O Sonar reprovou a cobertura. O resumo dos checks virou um pedido de correção, outro executor escreveu o teste, o revisor aprovou, commit novo, push, e o maestro esperou de novo:
+
+```text
+MAESTRO · PARC-482-mostrar-sell-out-mensal · backend: checks
+AÇÃO: REPETIR — Os checks da PR #431 de backend ainda estão rodando (4 min).
+Rode de novo: node harness/bin/maestro.mjs proximo
+```
+
+Verde, a PR saiu do rascunho e o maestro passou para o frontend. Depois das três fatias e da revisão do conjunto, o QA na tela: um subagente sobe os dois servidores, testa cada critério no navegador e responde uma linha por critério. O CA3 falhou (`onde: frontend`), virou correção, e o QA rodou de novo: tudo passou.
+
+### 19. Quando ele não consegue
+
+Se o QA cai numa tela de login, ou a ferramenta não dá navegador ao subagente, ele não simula nem digita credencial: responde "bloqueado". O maestro não trava por isso: segue, deixa a PR do frontend em rascunho e avisa no relatório que falta eu testar. Se eu preferir testar sempre eu mesmo, ponho `"qa": "humano"` no `config.json`.
+
+As outras paradas estão no manual (`harness/README.md`): um passo que não fecha depois das tentativas, PR sem nenhum check, conflito com a base, plano ou harness alterado no meio da condução.
+
+### 20. O fim
+
+```text
+AÇÃO: FIM
+===
+ENTREGA — PARC-482 — sell-out por canal
+
+PR de backend: #431 — 3 checks verdes, pronta para revisão — https://github.com/empresa/api-parceiros/pull/431
+PR de frontend: #212 — 3 checks verdes, pronta para revisão — https://github.com/empresa/web-parceiros/pull/212
+
+Commits:
+- backend 3cc0f09 feat(sellout): parser do look de sell-out
+- backend 81a2d4e feat(sellout): caso de uso e rota
+- backend 5f0c7aa test(sellout): cobre o erro do caso de uso
+[…]
+
+Premissas do plano (confira):
+- O mês padrão é o mês corrente, como no card de estoque.
+
+O que foi decidido no caminho:
+- Plano aprovado sem você: o validador e o crítico aprovaram, e não havia dúvida nem desvio.
+
+Falta de você: revisar e fazer o merge.
+Trilha da condução: harness/tarefas/PARC-482-mostrar-sell-out-mensal/passos/
+===
+```
+
+O que eu confiro: as duas PRs (a descrição termina com o bloco "Provas", escrito pelo script com o que ele mesmo conferiu), as premissas e, com os meus olhos, a tela. Para ver como um passo foi feito, `passos/` tem o pedido e a resposta de cada um, numerados.
+
+O colega comentou na PR? `/pr backend`, como no passo 13: a condução já terminou, e o passo a passo cuida da revisão.
+
+**Se a conversa cair no meio**, nada se perde: o estado está em `harness/tarefas/<id>/`. Conversa nova, `/entregar` sem tarefa, e ele continua. `node harness/bin/maestro.mjs estado` mostra onde está; `encerrar` larga a condução sem mexer no git.
+
+## Parte 5 — Variações
 
 ### PR antiga, feita sem o harness
 
@@ -270,7 +412,7 @@ Mesma raiz, mesma lei, mesmos roteiros. Muda a forma de chamar:
 | Chamar um passo | `/fatia` | `/fatia` | `$fatia` |
 | Ver os hooks | Customize → Hooks | `/hooks` | `/hooks` (revisar e confiar) |
 
-Dá para misturar: planejar numa ferramenta e implementar em outra, porque o estado está no plano, não na conversa.
+Dá para misturar: planejar numa ferramenta e implementar em outra, porque o estado está no plano, não na conversa. Vale também para os dois jeitos: um plano aprovado pelo `/planejar` é adotado pelo `/entregar`, sem tarefa, que conduz daí em diante.
 
 ### Pedido pequeno
 
@@ -282,7 +424,11 @@ Dá para misturar: planejar numa ferramenta e implementar em outra, porque o est
 |---|---|
 | Instalar ou atualizar | `node ~/domain-harness/instalar.mjs <raiz> [--com claude,codex]` |
 | Saber se está tudo no lugar | `node harness/bin/doutor.mjs` |
-| Começar uma tarefa | `/planejar <card e critérios>` |
+| Entregar uma tarefa inteira, do plano à PR | `/entregar <card e critérios>` |
+| Continuar uma entrega que parou | conversa nova, `/entregar` |
+| Saber onde a entrega está | `node harness/bin/maestro.mjs estado` |
+| Largar uma entrega | `node harness/bin/maestro.mjs encerrar` |
+| Começar uma tarefa passo a passo | `/planejar <card e critérios>` |
 | Fazer a próxima fatia | conversa nova, `/fatia` |
 | Ver se o que está na árvore passa | `node harness/bin/portoes.mjs backend` |
 | Testar na tela | `/qa` |

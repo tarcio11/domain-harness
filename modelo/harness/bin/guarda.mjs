@@ -17,7 +17,12 @@ const MENSAGENS = {
   dependencia:
     'Mudar dependência é desvio de padrão (lei, item 2). Pare, apresente o bloco DESVIO DE PADRÃO e, se aprovado, o humano instala.',
   'descarta-trabalho': 'Este comando descarta trabalho que ainda não foi commitado.',
+  'so-o-maestro':
+    'Durante o /entregar, branch, commit, push e PR são feitos pelo maestro, não por você. Grave o seu arquivo de resultado e pare. Para desfazer um arquivo seu, use `git checkout -- <arquivo>`.',
 };
+// Durante a condução não há humano para confirmar: o que pediria confirmação é negado, com a saída.
+const SEM_HUMANO_POR_PERTO =
+  ' O maestro está conduzindo e ninguém vai confirmar. Desfaça só o que você mesmo mexeu, arquivo por arquivo (`git checkout -- <arquivo>`, ou apague o arquivo novo).';
 
 const PERMITIDO = Object.freeze({ permissao: 'allow' });
 const negar = (regra) => ({ permissao: 'deny', regra, mensagem: MENSAGENS[regra] });
@@ -37,6 +42,9 @@ const COMMIT_LONGAS_COM_VALOR = new Set([
 ]);
 const PUSH_COM_VALOR = new Set(['-o', '--push-option', '--repo', '--receive-pack', '--exec']);
 const GH_COM_VALOR = new Set(['-R', '--repo']);
+// Com o maestro conduzindo, estes comandos mudariam o estado que ele confere a cada passo.
+const GIT_SO_DO_MAESTRO = new Set(['commit', 'push', 'pull', 'merge', 'rebase', 'cherry-pick', 'revert', 'reset', 'stash', 'switch', 'am']);
+const PR_SO_DO_MAESTRO = new Set(['create', 'ready', 'merge', 'close', 'reopen', 'edit', 'comment', 'review']);
 const PACOTES_COM_VALOR = new Set([
   '--prefix', '-C', '--dir', '--cwd', '-w', '--workspace', '--filter', '-F', '--registry', '--cache', '--userconfig',
 ]);
@@ -49,16 +57,31 @@ const GERENCIADORES = new Map([
   ['bun', { sempre: ['add', 'remove', 'update'], comPacote: ['install', 'i'] }],
 ]);
 
-export function avaliarComando(comando, contexto) {
+export function avaliarComando(comandoBruto, contexto) {
+  const comando = semHeredocs(comandoBruto);
   const vereditos = [
     ...avaliarSegmentos(comando, contexto),
     ...comandosEmbutidos(comando).map((embutido) => avaliarComando(embutido, contexto)),
   ];
-  return (
-    vereditos.find((v) => v.permissao === 'deny') ??
-    vereditos.find((v) => v.permissao === 'ask') ??
-    PERMITIDO
-  );
+  const negado = vereditos.find((v) => v.permissao === 'deny');
+  const perguntado = vereditos.find((v) => v.permissao === 'ask');
+  if (negado || !perguntado) return negado ?? PERMITIDO;
+  return contexto.maestroAtivo ? { ...perguntado, permissao: 'deny', mensagem: perguntado.mensagem + SEM_HUMANO_POR_PERTO } : perguntado;
+}
+
+// O corpo de um heredoc é texto (mensagem de commit, descrição), não comando.
+function semHeredocs(comando) {
+  const mantidas = [];
+  let fim = null;
+  for (const linha of comando.split('\n')) {
+    if (fim !== null) {
+      if (linha.trim() === fim) fim = null;
+      continue;
+    }
+    mantidas.push(linha);
+    fim = /(?<!<)<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/.exec(linha)?.[2] ?? null;
+  }
+  return mantidas.join('\n');
 }
 
 function avaliarSegmentos(comando, contexto) {
@@ -180,7 +203,7 @@ function avaliarSegmento({ ambiente, programa, args }, pasta, contexto) {
   const embrulhado = comandoEmbrulhado(programa, args);
   if (embrulhado !== null) return avaliarComando(embrulhado, { ...contexto, cwd: pasta });
   if (programa === 'git') return avaliarGit(args, pasta, contexto);
-  if (programa === 'gh') return avaliarGh(args);
+  if (programa === 'gh') return avaliarGh(args, contexto);
   const regrasDePacotes = GERENCIADORES.get(programa);
   return regrasDePacotes ? avaliarPacotes(regrasDePacotes, args) : PERMITIDO;
 }
@@ -200,6 +223,7 @@ function avaliarGit(args, pastaInicial, contexto) {
   const noProduto = contexto.ehRepoDoProduto(pasta);
   const branch = () => (noProduto ? contexto.branchDe(pasta) : null);
   const protegida = (nome) => noProduto && contexto.ehBranchProtegida(nome);
+  if (contexto.maestroAtivo && noProduto && mexeNoQueOMaestroConfere(sub, resto)) return negar('so-o-maestro');
 
   switch (sub) {
     case 'config':
@@ -226,6 +250,12 @@ function avaliarGit(args, pastaInicial, contexto) {
     default:
       return PERMITIDO;
   }
+}
+
+// "git checkout -- arquivo" desfaz um arquivo e é permitido; sem o "--" pode ser troca de branch.
+function mexeNoQueOMaestroConfere(sub, resto) {
+  if (sub === 'checkout') return !resto.includes('--');
+  return GIT_SO_DO_MAESTRO.has(sub);
 }
 
 function lerGit(args, pastaInicial) {
@@ -300,9 +330,10 @@ function destinoDoRef(ref, branchAtual) {
   return destino.replace(/^refs\/heads\//, '');
 }
 
-function avaliarGh(args) {
+function avaliarGh(args, contexto) {
   const [grupo, acao] = posicionais(args, GH_COM_VALOR);
   if (grupo !== 'pr') return PERMITIDO;
+  if (contexto.maestroAtivo && PR_SO_DO_MAESTRO.has(acao)) return negar('so-o-maestro');
   if (acao === 'merge') return negar('decisao-do-revisor');
   if (acao === 'review' && temFlag(args, 'a', '--approve')) return negar('decisao-do-revisor');
   return PERMITIDO;

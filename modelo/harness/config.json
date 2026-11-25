@@ -71,5 +71,18 @@
     "ignorar": ["package-lock.json", "yarn.lock", "pnpm-lock.yaml", "*.snap", "*.svg"]
   },
   "saida": { "linhasDeErro": 40, "tempoMaximoPorPortaoMin": 15 },
-  "checks": { "intervaloSeg": 20, "maximoMin": 25, "carenciaSemChecksMin": 2 }
+  "checks": { "intervaloSeg": 20, "maximoMin": 25, "carenciaSemChecksMin": 2 },
+  "maestro": {
+    "aprovarPlano": "auto",
+    "maximoDeFatias": 8,
+    "qa": "auto",
+    "exigirChecks": true,
+    "tentativasPorPasso": 2,
+    "voltasDeRevisao": 2,
+    "voltasDeChecks": 3,
+    "ciclosDeQa": 2,
+    "esperaPorChamadaSeg": 25,
+    "esperaDeChecksMin": 45,
+    "subagentes": { "padrao": "maestro-passo" }
+  }
 }

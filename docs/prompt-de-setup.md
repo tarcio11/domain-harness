@@ -38,6 +38,7 @@ Passo 6 — Pare e responda só com isto:
 2. Cada pendência do doutor e o que eu preciso fazer para resolver. Pendências de "portões configurados" e "padrão mapeado" são esperadas agora: elas somem depois do /mapear.
 3. O que eu preciso conferir à mão: no Cursor, reabrir a pasta como confiável e ver os três hooks em Customize → Hooks; no Claude Code e no Codex, abrir /hooks e confirmar que os hooks do harness aparecem (no Codex, revisar e confiar).
 4. Os próximos comandos, cada um numa conversa nova: `/mapear backend` e depois `/mapear frontend`.
+5. Para o `/entregar` andar sozinho depois do mapeamento: no Cursor, pôr `node harness/bin/maestro.mjs` e `node harness/bin/portoes.mjs` na allowlist de comandos (Settings → Agents → Approvals & Execution), porque o maestro precisa de rede para `git push` e `gh`.
 ```
 
 ## O que esperar
@@ -45,8 +46,8 @@ Passo 6 — Pare e responda só com isto:
 O relatório do instalador, numa raiz limpa com os dois adaptadores, é parecido com este:
 
 ```text
-HARNESS 0.2.0 em /Users/voce/trabalho/parceiros (ferramentas: cursor, claude, codex)
-  criados: 43 · atualizados: 0 · iguais: 0 · do projeto, mantidos: 0 · conflitos: 0
+HARNESS 0.3.0 em /Users/voce/trabalho/parceiros (ferramentas: cursor, claude, codex)
+  criados: 65 · atualizados: 0 · iguais: 0 · do projeto, mantidos: 0 · conflitos: 0
 Repositórios: backend → api-parceiros · frontend → web-parceiros
 ```
 
@@ -66,3 +67,4 @@ E o doutor, antes do mapeamento, acusa só o que ainda falta mapear:
 - **O instalador decide, não o agente.** Copiar arquivo por arquivo é onde um agente erra. O script sabe o que é motor, o que é do projeto e o que você editou.
 - **Parar antes do `/mapear`.** O mapeamento lê muito código. Numa conversa nova ele começa com a janela vazia.
 - **Conflito é pergunta.** Um `AGENTS.md` ou `.claude/settings.json` que já existia é seu: o agente não junta por conta própria.
+- **A allowlist é sua.** O agente só avisa. Liberar um comando para rodar sem confirmação e fora do sandbox é uma decisão de segurança da sua máquina.

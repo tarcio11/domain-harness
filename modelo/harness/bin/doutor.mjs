@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { branchAtual, ehRepoGit, git, lerConfig, nomesDosRepos, pastaDoRepo, RAIZ } from './config.mjs';
 import { avaliarComando } from './guarda.mjs';
+import { conducaoAberta } from './livro.mjs';
 
 const NODE_MINIMO = 16;
 let pendencias = 0;
@@ -79,6 +80,19 @@ function conferirCatraca() {
   conferir(veredito.permissao === 'deny', 'guarda de shell barra --no-verify', 'harness/bin/guarda.mjs foi alterado?');
 }
 
+// O /entregar depende dos roteiros que o maestro põe dentro de cada pedido e do subagente que os executa.
+function conferirMaestro() {
+  const roteiros = ['maestro/planejar.md', 'maestro/criticar-plano.md', 'maestro/executar.md', 'maestro/qa.md', 'maestro/descrever-pr.md', 'revisor.md'];
+  const faltando = roteiros.filter((roteiro) => !existsSync(join(RAIZ, 'harness', 'roteiros', roteiro)));
+  conferir(faltando.length === 0, '/entregar: roteiros do maestro presentes', `rode o instalador de novo (faltam: ${faltando.join(', ')})`);
+  conferir(existsSync(join(RAIZ, '.cursor', 'agents', 'maestro-passo.md')), '/entregar: subagente maestro-passo (Cursor)', 'rode o instalador de novo');
+  const conducao = conducaoAberta();
+  if (conducao) {
+    const situacao = conducao.parado ? `parada, esperando você (${conducao.parado.tipo})` : 'em andamento';
+    console.log(`• condução aberta: ${conducao.tarefa}, ${situacao} — node harness/bin/maestro.mjs estado`);
+  }
+}
+
 // Só confere a ferramenta que foi instalada: a ausência do arquivo não é pendência.
 function conferirAdaptadores() {
   const hookDoClaude = join(RAIZ, '.claude', 'settings.json');
@@ -100,11 +114,12 @@ conferirFerramentas();
 const config = lerConfig();
 for (const nome of nomesDosRepos(config)) conferirRepo(config, nome);
 conferirCatraca();
+conferirMaestro();
 conferirAdaptadores();
 
 console.log(
   pendencias === 0
-    ? 'RESULTADO: tudo certo. Falta só o que o doutor não enxerga: em cada ferramenta, confira se os hooks aparecem e estão confiáveis (Cursor: Customize → Hooks; Claude Code e Codex: /hooks).'
+    ? 'RESULTADO: tudo certo. Falta só o que o doutor não enxerga: em cada ferramenta, confira se os hooks aparecem e estão confiáveis (Cursor: Customize → Hooks; Claude Code e Codex: /hooks). Para o /entregar andar sozinho, o comando "node harness/bin/maestro.mjs" precisa rodar sem pedir aprovação e com acesso à rede (no Cursor: allowlist de comandos).'
     : `RESULTADO: ${pendencias} pendência(s) acima.`,
 );
 process.exitCode = pendencias === 0 ? 0 : 1;

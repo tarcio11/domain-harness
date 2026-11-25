@@ -11,11 +11,13 @@ const LINHA_DE_COMENTARIO = /^\s*(\/\/|\/\*|\*\/|\*(\s|$)|\{\/\*)/;
 const IMPORTACAO = /(?:\bfrom\s+|\brequire\(\s*|\bimport\(\s*|\bimport\s+)['"]([^'"]+)['"]/;
 const SUFIXO_DE_TESTE = /\.(test|spec)$/;
 
-export function conferirRepo(config, nome, { modo = 'fatia', escopo = [] } = {}) {
+// Compara a árvore de trabalho com a referência: HEAD numa fatia, a base numa PR, ou o commit
+// que o maestro anotou antes de entregar o trabalho a um subagente.
+export function conferirRepo(config, nome, { modo = 'fatia', escopo = [], referencia = null } = {}) {
   const pasta = pastaDoRepo(config, nome);
   const repo = config.repos[nome];
-  const referencia = modo === 'pr' ? baseDaPr(pasta, repo.base) : 'HEAD';
-  const diff = coletarDiff(pasta, referencia);
+  const desde = referencia ?? (modo === 'pr' ? baseDaPr(pasta, repo.base) : 'HEAD');
+  const diff = coletarDiff(pasta, desde);
   const achados = avaliar(diff, {
     config,
     modo,
@@ -23,7 +25,8 @@ export function conferirRepo(config, nome, { modo = 'fatia', escopo = [] } = {})
     prefixo: `${repo.dir}/`,
     liberados: desviosAprovados(),
   });
-  return { achados, arquivos: diff.arquivos.length };
+  const lista = diff.arquivos.map(({ caminho, novo, removido }) => ({ caminho, novo, removido }));
+  return { achados, arquivos: lista.length, lista };
 }
 
 export function formatarAchado(achado) {

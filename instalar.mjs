@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const VERSAO = '0.2.0';
+const VERSAO = '0.3.0';
 const USO = 'Uso: node instalar.mjs <raiz> [--com claude,codex] [--forcar]';
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const MODELO = join(AQUI, 'modelo');
@@ -184,6 +184,7 @@ function relatar({ raiz, com }, { repos, porSituacao }) {
   console.log('  1. node harness/bin/doutor.mjs            (na raiz; lista o que falta)');
   console.log('  2. No Cursor: reabra a pasta como confiável e confira os três hooks em Customize → Hooks');
   console.log('  3. Conversa nova: /mapear backend   ·   outra conversa nova: /mapear frontend');
+  console.log('  4. Depois de mapear: /entregar <tarefa> leva do plano à PR com os checks verdes (veja docs/exemplo.md)');
 }
 
 try {

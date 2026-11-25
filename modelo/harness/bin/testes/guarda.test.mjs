@@ -6,14 +6,17 @@ import { avaliarComando, separarSegmentos } from '../guarda.mjs';
 
 const REPO = '/raiz/backend';
 
-function avaliar(comando, { branch = 'feature/ABC-1-parser', cwd = REPO } = {}) {
+function avaliar(comando, { branch = 'feature/ABC-1-parser', cwd = REPO, maestroAtivo = false } = {}) {
   return avaliarComando(comando, {
     cwd,
     ehRepoDoProduto: (pasta) => pasta.startsWith(REPO),
     branchDe: () => branch,
     ehBranchProtegida: (nome) => ['main', 'develop'].includes(nome),
+    maestroAtivo,
   });
 }
+
+const MAESTRO = { maestroAtivo: true };
 
 const casos = [
   // [comando, permissão esperada, regra esperada, opções]
@@ -99,6 +102,29 @@ const casos = [
   ['eval "git push origin main"', 'deny', 'branch-protegida'],
   ['bash -c "npm run build"', 'allow'],
   ['bash scripts/deploy.sh', 'allow'],
+
+  ['git commit -F - <<EOF\nexplica o git push --force\nnpm install lodash\nEOF', 'allow'],
+  ['cat > nota.md <<\'FIM\'\ngit commit --no-verify\nFIM\ngit push --force', 'deny', 'push-forcado'],
+
+  ['git commit -m "feat: x"', 'deny', 'so-o-maestro', MAESTRO],
+  ['git push -u origin feature/ABC-1-parser', 'deny', 'so-o-maestro', MAESTRO],
+  ['git checkout -b outra', 'deny', 'so-o-maestro', MAESTRO],
+  ['git checkout main', 'deny', 'so-o-maestro', MAESTRO],
+  ['git stash', 'deny', 'so-o-maestro', MAESTRO],
+  ['git reset HEAD~1', 'deny', 'so-o-maestro', MAESTRO],
+  ['gh pr create --title x --body y', 'deny', 'so-o-maestro', MAESTRO],
+  ['git checkout -- src/a.ts', 'allow', undefined, MAESTRO],
+  ['git checkout -- .', 'deny', 'descarta-trabalho', MAESTRO],
+  ['git clean -fd', 'deny', 'descarta-trabalho', MAESTRO],
+  ['git restore .', 'deny', 'descarta-trabalho', MAESTRO],
+  ['git clean -fd', 'ask', 'descarta-trabalho'],
+  ['git status --short', 'allow', undefined, MAESTRO],
+  ['git diff --cached abc123', 'allow', undefined, MAESTRO],
+  ['git add src/a.ts', 'allow', undefined, MAESTRO],
+  ['gh pr checks 12', 'allow', undefined, MAESTRO],
+  ['node harness/bin/maestro.mjs proximo', 'allow', undefined, MAESTRO],
+  ['node harness/bin/portoes.mjs backend --escopo src/parsers', 'allow', undefined, MAESTRO],
+  ['git commit -m "x"', 'allow', undefined, { ...MAESTRO, cwd: '/raiz' }],
 
   ['git add src && git commit -m "x" && git push --force', 'deny', 'push-forcado'],
   ['git reset --hard && git push --force', 'deny', 'push-forcado'],

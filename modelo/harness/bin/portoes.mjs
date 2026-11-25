@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { ehRepoGit, lerConfig, pastaDoRepo, RAIZ } from './config.mjs';
 import { conferirRepo, formatarAchado } from './conferir.mjs';
+import { gravarRecibo } from './recibo.mjs';
 
 const USO = 'Uso: node harness/bin/portoes.mjs <repo> [--pr] [--escopo caminho ...] [--so-diff] [--todos]';
 const PASTA_DE_LOGS = join(RAIZ, 'harness', '.logs');
@@ -111,6 +112,7 @@ function rodarPortoes(config, opcoes, pasta) {
     reprovados.push(resultado.nome);
     if (!opcoes.todos) break;
   }
+  if (reprovados.length === 0) gravarRecibo(opcoes.repo, pasta);
   return { total: portoes.length, reprovados };
 }
 

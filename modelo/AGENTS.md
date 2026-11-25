@@ -40,7 +40,8 @@ Nunca pelas suas mãos, nem com aprovação:
 
 - desligar verificação: `eslint-disable`, `@ts-ignore`, `NOSONAR`, pular ou enfraquecer teste, baixar limite de cobertura;
 - `--no-verify`, `push --force`, commit direto em branch protegida, aprovar ou fazer merge de PR;
-- alterar o próprio harness (`harness/bin`, `harness/roteiros`, `harness/config.json`, `.agents/`, `.cursor/`, `.claude/`, `.codex/`) fora do `/mapear` ou de pedido explícito do humano.
+- alterar o próprio harness (`harness/bin`, `harness/roteiros`, `harness/config.json`, `.agents/`, `.cursor/`, `.claude/`, `.codex/`) fora do `/mapear` ou de pedido explícito do humano;
+- escrever em "Desvios aprovados" do plano o que o humano não aprovou, ou mexer em `maestro.json`, em `passos/` ou nos recibos dos portões.
 
 ## 3. Escreva para quem revisa
 
@@ -67,6 +68,13 @@ Nunca pelas suas mãos, nem com aprovação:
 ## Fluxo
 
 `/mapear` (uma vez por repositório) → `/planejar` → `/fatia` (uma por conversa) → `/qa` → `/pr`. Para auditar branch ou PR que já existe: `/conferir`.
+
+`/entregar <tarefa>` faz esse caminho inteiro sozinho, do plano à PR com os checks verdes. O script `harness/bin/maestro.mjs` decide cada passo e confere cada resultado; o modelo só opera. Com uma condução aberta:
+
+- quem conversa com o humano (o operador) só roda `node harness/bin/maestro.mjs proximo` e faz o que a AÇÃO manda: não lê código, não corrige, não decide;
+- quem recebe um pedido do maestro (um subagente) faz só o que o pedido manda e termina gravando o arquivo de resultado;
+- branch, commit, push e PR são do maestro: ninguém mais roda esses comandos;
+- a resposta do humano a um PARE vai, sem mudar uma palavra, para `harness/tarefas/RESPOSTA.md`, seguida de `node harness/bin/maestro.mjs retomar`. Ninguém age direto sobre ela.
 
 O roteiro de cada comando fica em `.agents/skills/<comando>/SKILL.md`. Se a sua ferramenta não reconhece o comando, leia o arquivo e siga.
 

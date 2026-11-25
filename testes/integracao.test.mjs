@@ -15,6 +15,9 @@ const INSTALADOR = join(REPO_DO_HARNESS, 'instalar.mjs');
 const AUTOR = { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t.dev', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t.dev' };
 
 let raiz;
+// A memória da catraca fica na pasta temporária do sistema: cada execução usa conversas só dela.
+const CONVERSA = `c-cursor-${process.pid}-${Date.now()}`;
+const OUTRA_CONVERSA = `c-outra-${process.pid}-${Date.now()}`;
 
 function rodar(programa, args, opcoes = {}) {
   const r = spawnSync(programa, args, { encoding: 'utf8', env: { ...process.env, ...AUTOR }, ...opcoes });
@@ -79,7 +82,13 @@ test('instala a base e os adaptadores pedidos, e reconhece backend e frontend', 
     '.claude/commands/fatia.md',
     '.codex/hooks.json',
     'harness/bin/portoes.mjs',
+    'harness/bin/maestro.mjs',
     'harness/roteiros/revisor.md',
+    'harness/roteiros/maestro/executar.md',
+    '.agents/skills/entregar/SKILL.md',
+    '.cursor/agents/maestro-passo.md',
+    '.claude/agents/maestro-passo.md',
+    '.claude/commands/entregar.md',
     'harness/.instalado.json',
   ]) {
     assert.ok(existsSync(join(raiz, arquivo)), `faltou ${arquivo}`);
@@ -121,23 +130,32 @@ test('patch de edição não é julgado como comando de shell', () => {
 test('fim de turno: cobra bloqueio novo uma vez, repete para o mesmo evento e depois silencia', () => {
   writeFileSync(join(raiz, 'api-x', 'src', 'a.ts'), '// eslint-disable-next-line\nexport const a = 1;\n');
 
-  const cursor = hook('parar', 'cursor', { status: 'completed', loop_count: 0, conversation_id: 'c-cursor' });
+  const cursor = hook('parar', 'cursor', { status: 'completed', loop_count: 0, conversation_id: CONVERSA });
   assert.match(cursor.followup_message, /api-x\/src\/a\.ts:1 — desliga o lint/);
-  const mesmoEvento = hook('parar', 'claude', { session_id: 'c-cursor', stop_hook_active: false });
+  const mesmoEvento = hook('parar', 'claude', { session_id: CONVERSA, stop_hook_active: false });
   assert.equal(mesmoEvento.decision, 'block');
   assert.equal(mesmoEvento.reason, cursor.followup_message);
 
-  assert.deepEqual(hook('parar', 'cursor', { status: 'completed', loop_count: 1, conversation_id: 'c-outra' }), {});
-  assert.deepEqual(hook('parar', 'codex', { session_id: 'c-outra', stop_hook_active: true }), {});
-  assert.deepEqual(hook('parar', 'cursor', { status: 'aborted', loop_count: 0, conversation_id: 'c-outra' }), {});
+  // Turno interrompido pelo humano não é cobrado. Outra conversa é cobrada pela conta dela,
+  // venha ou não de uma continuação: quem limita a repetição é a memória do hook, não o contador da ferramenta.
+  assert.deepEqual(hook('parar', 'cursor', { status: 'aborted', loop_count: 0, conversation_id: OUTRA_CONVERSA }), {});
+  assert.match(hook('parar', 'codex', { session_id: OUTRA_CONVERSA, stop_hook_active: true }).reason, /desliga o lint/);
 
-  const memoria = join(tmpdir(), 'harness-catraca', 'c-cursor.json');
+  const memoria = join(tmpdir(), 'harness-catraca', `${CONVERSA}.json`);
   const lembranca = JSON.parse(readFileSync(memoria, 'utf8'));
   writeFileSync(memoria, JSON.stringify({ ...lembranca, quando: lembranca.quando - 60000 }));
-  assert.deepEqual(hook('parar', 'cursor', { status: 'completed', loop_count: 0, conversation_id: 'c-cursor' }), {});
+  assert.deepEqual(hook('parar', 'cursor', { status: 'completed', loop_count: 0, conversation_id: CONVERSA }), {});
+
+  // Lista diferente é cobrada de novo, até três seguidas; depois o hook se cala até o diff ficar limpo.
+  for (const [vez, resto] of ['debugger;', '// NOSONAR'].entries()) {
+    writeFileSync(join(raiz, 'api-x', 'src', 'a.ts'), `// eslint-disable-next-line\n${resto}\nexport const a = ${vez};\n`);
+    assert.match(hook('parar', 'cursor', { status: 'completed', loop_count: vez + 1, conversation_id: CONVERSA }).followup_message, /2 bloqueio\(s\)/);
+  }
+  writeFileSync(join(raiz, 'api-x', 'src', 'a.ts'), 'debugger;\nexport const a = 9;\n');
+  assert.deepEqual(hook('parar', 'cursor', { status: 'completed', loop_count: 3, conversation_id: CONVERSA }), {});
 
   rodar('git', ['checkout', '-q', '--', 'src/a.ts'], { cwd: join(raiz, 'api-x') });
-  assert.deepEqual(hook('parar', 'cursor', { status: 'completed', loop_count: 0, conversation_id: 'c-cursor' }), {});
+  assert.deepEqual(hook('parar', 'cursor', { status: 'completed', loop_count: 0, conversation_id: CONVERSA }), {});
   assert.ok(!existsSync(memoria));
 });
 
@@ -192,6 +210,8 @@ test('o doutor enxerga repositórios e adaptadores, e os testes da catraca passa
   assert.match(doutor.saida, /Claude Code: hooks do harness/);
   assert.match(doutor.saida, /Codex: \.codex\/hooks\.json aponta para esta raiz/);
   assert.match(doutor.saida, /backend: repositório em "api-x"/);
+  assert.match(doutor.saida, /\/entregar: roteiros do maestro presentes/);
+  assert.match(doutor.saida, /\/entregar: subagente maestro-passo/);
 
   const unitarios = rodar('node', ['--test', join(raiz, 'harness', 'bin', 'testes', 'guarda.test.mjs'), join(raiz, 'harness', 'bin', 'testes', 'conferir.test.mjs')]);
   assert.equal(unitarios.codigo, 0, unitarios.saida);

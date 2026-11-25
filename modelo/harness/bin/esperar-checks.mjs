@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 // Espera os checks da PR (CI, Sonar) terminarem, em silêncio, e devolve só o resumo.
-// Saída: 0 tudo verde · 1 algum check reprovou · 2 uso/gh · 3 inconclusivo (ainda rodando ou sem checks).
+// Saída: 0 tudo verde · 1 algum check reprovou · 2 uso/gh · 3 ainda rodando · 4 a PR não tem checks.
+// As opções --max-seg, --intervalo-seg, --desde e --commit servem ao maestro, que espera em
+// chamadas curtas: a carência conta a partir de --desde, e só valem os checks do commit pedido.
 
 import { spawnSync } from 'node:child_process';
 import { ehRepoGit, lerConfig, pastaDoRepo } from './config.mjs';
 
 const USO = 'Uso: node harness/bin/esperar-checks.mjs <repo> [--pr <número>] [--max-min <minutos>]';
+const OPCOES_COM_VALOR = { '--pr': 'pr', '--commit': 'commit' };
+const OPCOES_COM_NUMERO = { '--max-min': 'maxMin', '--max-seg': 'maxSeg', '--intervalo-seg': 'intervaloSeg', '--desde': 'desde' };
 const LINHAS_POR_CHECK = 25;
 const ANOTACOES_POR_CHECK = 20;
 const CORES_ANSI = /\u001b\[[0-9;?]*[A-Za-z]/g;
@@ -14,11 +18,12 @@ const SIMBOLO = { pass: '✔', fail: '✖', cancel: '✖', pending: '…', skipp
 class ErroDeUso extends Error {}
 
 function lerArgumentos(argumentos) {
-  const opcoes = { repo: null, pr: null, maxMin: null };
+  const opcoes = { repo: null, pr: null, commit: null, maxMin: null, maxSeg: null, intervaloSeg: null, desde: null };
   for (let i = 0; i < argumentos.length; i++) {
-    if (argumentos[i] === '--pr') opcoes.pr = argumentos[++i];
-    else if (argumentos[i] === '--max-min') opcoes.maxMin = Number(argumentos[++i]);
-    else if (!opcoes.repo && !argumentos[i].startsWith('--')) opcoes.repo = argumentos[i];
+    const argumento = argumentos[i];
+    if (OPCOES_COM_VALOR[argumento]) opcoes[OPCOES_COM_VALOR[argumento]] = argumentos[++i];
+    else if (OPCOES_COM_NUMERO[argumento]) opcoes[OPCOES_COM_NUMERO[argumento]] = Number(argumentos[++i]);
+    else if (!opcoes.repo && !argumento.startsWith('--')) opcoes.repo = argumento;
     else throw new ErroDeUso(USO);
   }
   if (!opcoes.repo) throw new ErroDeUso(USO);
@@ -61,18 +66,18 @@ const dormir = (ms) => new Promise((acordar) => setTimeout(acordar, ms));
 // Logo depois de abrir a PR o GitHub ainda não listou os checks, e um check externo (Sonar) pode
 // se registrar depois do CI. Por isso "nenhum" só vale depois da carência, e "terminou" só vale
 // quando duas leituras seguidas mostram a mesma lista, toda parada.
-async function esperarTerminar(gh, numero, { intervaloSeg, maximoMin, carenciaSemChecksMin }) {
-  const inicio = Date.now();
-  const passou = (minutos) => Date.now() - inicio > minutos * 60 * 1000;
+async function esperarTerminar(gh, numero, { intervaloSeg, esperaSeg, carenciaSemChecksMin, desde }) {
+  const prazo = Date.now() + esperaSeg * 1000;
+  const acabouACarencia = () => Date.now() - desde > carenciaSemChecksMin * 60 * 1000;
   let paradosNaLeituraAnterior = -1;
   for (;;) {
     const checks = lerChecks(gh, numero);
     const todosParados = checks.length > 0 && checks.every((check) => check.bucket !== 'pending');
-    const terminou =
-      checks.length > 0 ? todosParados && checks.length === paradosNaLeituraAnterior : passou(carenciaSemChecksMin);
-    if (terminou || passou(maximoMin)) return { checks, terminou };
+    const terminou = checks.length > 0 ? todosParados && checks.length === paradosNaLeituraAnterior : acabouACarencia();
+    const resta = prazo - Date.now();
+    if (terminou || resta <= 0) return { checks, terminou };
     paradosNaLeituraAnterior = todosParados ? checks.length : -1;
-    await dormir(intervaloSeg * 1000);
+    await dormir(Math.min(intervaloSeg * 1000, resta));
   }
 }
 
@@ -130,20 +135,29 @@ async function principal() {
 
   const gh = criarGh(pasta);
   const pr = acharPr(gh, opcoes.pr);
+  if (opcoes.commit && pr.headRefOid !== opcoes.commit) {
+    console.log('RESULTADO: AINDA RODANDO — o GitHub ainda não registrou o último push desta PR. Rode o comando de novo.');
+    return 3;
+  }
   const limites = { intervaloSeg: 20, maximoMin: 25, carenciaSemChecksMin: 2, ...config.checks };
-  if (opcoes.maxMin) limites.maximoMin = opcoes.maxMin;
-
-  const { checks, terminou } = await esperarTerminar(gh, pr.number, limites);
+  const esperaSeg = opcoes.maxSeg ?? (opcoes.maxMin ?? limites.maximoMin) * 60;
+  const { checks, terminou } = await esperarTerminar(gh, pr.number, {
+    intervaloSeg: opcoes.intervaloSeg ?? limites.intervaloSeg,
+    esperaSeg,
+    carenciaSemChecksMin: limites.carenciaSemChecksMin,
+    desde: opcoes.desde ?? Date.now(),
+  });
   relatar(gh, pr, checks);
 
   const reprovados = checks.filter((check) => check.bucket === 'fail' || check.bucket === 'cancel').length;
   if (!terminou) {
-    console.log(`RESULTADO: AINDA RODANDO depois de ${limites.maximoMin} min. Rode o comando de novo.`);
+    console.log(`RESULTADO: AINDA RODANDO depois de ${Math.round(esperaSeg)} s de espera. Rode o comando de novo.`);
     return 3;
   }
-  if (checks.length === 0) {
+  // Check pulado não prova nada: uma PR só com checks pulados (CI que ignora rascunho) conta como sem checks.
+  if (checks.every((check) => check.bucket === 'skipping')) {
     console.log('RESULTADO: SEM CHECKS — nada rodou nesta PR. Confira no GitHub se o CI ignora PR em rascunho e avise o humano.');
-    return 3;
+    return 4;
   }
   if (reprovados > 0) {
     console.log(`RESULTADO: REPROVADO — ${reprovados} de ${checks.length} checks. Conserte a causa em commit novo.`);

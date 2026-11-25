@@ -1,2 +1,4 @@
 .logs/
+.recibos/
+.maestro/
 .instalado.json
